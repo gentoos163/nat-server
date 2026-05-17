@@ -26,6 +26,7 @@ mod ipc;
 mod lan;
 mod port_forward;
 mod rendezvous_mediator;
+mod socks5;
 mod ui;
 
 use clap::{Parser, Subcommand};
@@ -329,6 +330,18 @@ fn start_background_services(rt: &tokio::runtime::Runtime, ipc_port: u16) {
     // Token 过期监控
     rt.spawn(async { auth::start_token_refresh_watcher().await });
 
+    // SOCKS5 代理服务器（若已配置）
+    {
+        let (s5_enabled, s5_port, s5_exit_peer) = config::ClientConfig::get_socks5_config();
+        if s5_enabled && !s5_exit_peer.is_empty() {
+            rt.spawn(async move {
+                if let Err(e) = socks5::start_proxy_server(s5_port, s5_exit_peer).await {
+                    log::error!("[proxy] SOCKS5 服务器启动失败: {}", e);
+                }
+            });
+        }
+    }
+
     // 当前认证状态提示
     if ClientConfig::is_logged_in() {
         let cfg = ClientConfig::get();
@@ -360,6 +373,18 @@ async fn start_all_async(ipc_port: u16) {
         }
     });
     tokio::spawn(async { auth::start_token_refresh_watcher().await });
+
+    // SOCKS5 代理服务器（若已配置）
+    {
+        let (s5_enabled, s5_port, s5_exit_peer) = config::ClientConfig::get_socks5_config();
+        if s5_enabled && !s5_exit_peer.is_empty() {
+            tokio::spawn(async move {
+                if let Err(e) = socks5::start_proxy_server(s5_port, s5_exit_peer).await {
+                    log::error!("[proxy] SOCKS5 服务器启动失败: {}", e);
+                }
+            });
+        }
+    }
 
     log::info!("守护进程运行中，按 Ctrl+C 退出...");
 }

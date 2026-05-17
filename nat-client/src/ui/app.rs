@@ -130,6 +130,12 @@ fn init_config_fields(w: &AppWindow) {
     w.set_cfg_api_url(cfg.api_url.as_str().into());
     w.set_cfg_ipc_port(cfg.ipc_port.to_string().as_str().into());
     w.set_peer_id(ClientConfig::get_id().as_str().into());
+
+    // 代理配置
+    let (s5_en, s5_port, s5_peer) = ClientConfig::get_socks5_config();
+    w.set_socks5_enabled(s5_en);
+    w.set_socks5_exit_peer(s5_peer.as_str().into());
+    w.set_socks5_port_str(s5_port.to_string().as_str().into());
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -659,6 +665,48 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             if let Some(w) = win.upgrade() {
                 apply_translations(&w, &lang_str);
             }
+        });
+    }
+
+    // ── 切换 SOCKS5 代理开关 ──────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_toggle_socks5(move || {
+            ClientConfig::update(|c| c.socks5_enabled = !c.socks5_enabled);
+            if let Some(w) = win.upgrade() {
+                let (s5_en, _, _) = ClientConfig::get_socks5_config();
+                w.set_socks5_enabled(s5_en);
+                w.set_settings_status(
+                    if s5_en { "✅ SOCKS5 代理已启用（重启后生效）".into() }
+                    else { "SOCKS5 代理已禁用".into() }
+                );
+            }
+        });
+    }
+
+    // ── 保存代理设置 ─────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_save_proxy_settings(move || {
+            let Some(w) = win.upgrade() else { return };
+            let exit_peer = w.get_socks5_exit_peer().to_string();
+            let port_str = w.get_socks5_port_str().to_string();
+            let port: u16 = port_str.parse().unwrap_or(1080);
+
+            ClientConfig::update(|c| {
+                c.socks5_exit_peer = exit_peer.clone();
+                c.socks5_port = port;
+            });
+
+            w.set_settings_status("✅ 代理设置已保存（重启后生效）".into());
+            log::info!("[gui] 代理设置已保存: exit_peer={} port={}", exit_peer, port);
+
+            // 通过 IPC 保存设置
+            let cmd = format!(
+                r#"{{"cmd":"proxy_save","port":{},"exit_peer":"{}"}}"#,
+                port, exit_peer
+            );
+            blocking_ipc(ipc_port, &cmd);
         });
     }
 }

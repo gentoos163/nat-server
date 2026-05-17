@@ -1212,10 +1212,16 @@ component SettingsPage inherits VerticalLayout {
     in property <string> status-msg;
     in property <bool> status-ok;
     in property <bool> busy;
+    // 代理设置
+    in-out property <bool> socks5-enabled;
+    in-out property <string> socks5-exit-peer;
+    in-out property <string> socks5-port-str: "1080";
     callback save();
     callback restart-mediator();
     callback open-config-file();
     callback set-language(string);
+    callback toggle-socks5();
+    callback save-proxy-settings();
 
     spacing: 0px;
     padding: 24px;
@@ -1356,6 +1362,96 @@ component SettingsPage inherits VerticalLayout {
     }
 
     Rectangle {
+        height: 16px;
+    }
+
+    // 代理设置卡片
+    Text {
+        text: "代理设置";
+        color: Palette.text-bright;
+        font-size: 15px;
+        font-weight: 600;
+        height: 30px;
+        vertical-alignment: center;
+    }
+
+    Card {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+
+            // SOCKS5 开关
+            HorizontalLayout {
+                height: 32px;
+                Label {
+                    text: "SOCKS5 代理";
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                PBtn {
+                    text: root.socks5-enabled ? "已启用" : "已禁用";
+                    small: true;
+                    width: 72px;
+                    clicked => {
+                        root.toggle-socks5();
+                    }
+                }
+            }
+
+            // 出口节点
+            HorizontalLayout {
+                height: 32px;
+                spacing: 8px;
+                Label {
+                    text: "出口 Peer ID";
+                    vertical-alignment: center;
+                    width: 90px;
+                }
+
+                Input {
+                    placeholder: "对端 Peer ID";
+                    value <=> root.socks5-exit-peer;
+                    horizontal-stretch: 1;
+                }
+            }
+
+            // 本地端口
+            HorizontalLayout {
+                height: 32px;
+                spacing: 8px;
+                Label {
+                    text: "本地端口";
+                    vertical-alignment: center;
+                    width: 90px;
+                }
+
+                Input {
+                    placeholder: "1080";
+                    value <=> root.socks5-port-str;
+                    horizontal-stretch: 1;
+                }
+            }
+
+            // 保存按钮
+            HorizontalLayout {
+                height: 36px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+
+                PBtn {
+                    text: "保存代理设置";
+                    width: 120px;
+                    clicked => {
+                        root.save-proxy-settings();
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
         vertical-stretch: 1;
     }
 }
@@ -1403,6 +1499,11 @@ export component AppWindow inherits Window {
     in-out property <string> cfg-api-url;
     in-out property <string> cfg-ipc-port;
 
+    // ── 代理设置字段（双向） ──────────────────────────────────
+    in-out property <bool> socks5-enabled;
+    in-out property <string> socks5-exit-peer;
+    in-out property <string> socks5-port-str: "1080";
+
     // ── 输入字段（双向） ──────────────────────────────────────
     in-out property <string> quick-peer-id;
     in-out property <string> quick-local-port: "0";
@@ -1433,6 +1534,8 @@ export component AppWindow inherits Window {
     callback do-open-config();
     callback toggle-register();
     callback set-language(string);
+    callback toggle-socks5();
+    callback save-proxy-settings();
 
     // ── 布局 ──────────────────────────────────────────────────
     HorizontalLayout {
@@ -1688,6 +1791,9 @@ export component AppWindow inherits Window {
                 status-msg <=> root.settings-status;
                 status-ok <=> root.settings-status-ok;
                 busy <=> root.account-busy;
+                socks5-enabled <=> root.socks5-enabled;
+                socks5-exit-peer <=> root.socks5-exit-peer;
+                socks5-port-str <=> root.socks5-port-str;
                 save => {
                     root.do-save-settings();
                 }
@@ -1699,6 +1805,12 @@ export component AppWindow inherits Window {
                 }
                 set-language(lang) => {
                     root.set-language(lang);
+                }
+                toggle-socks5 => {
+                    root.toggle-socks5();
+                }
+                save-proxy-settings => {
+                    root.save-proxy-settings();
                 }
             }
         }
