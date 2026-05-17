@@ -404,6 +404,44 @@ pub fn remove_device(device_id: &str) -> ResultType<()> {
     }
 }
 
+/// 订阅信息摘要（供 GUI 展示）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SubscriptionSummary {
+    /// 套餐显示名称（未订阅时为"免费版"）
+    pub plan_display_name: String,
+    /// 已用设备数
+    pub device_used: i64,
+    /// 设备上限（0 = 不限）
+    pub device_limit: i64,
+    /// 到期时间字符串（永久时为空）
+    pub expires_at: String,
+}
+
+/// 获取当前用户的订阅信息
+pub fn get_my_subscription() -> ResultType<SubscriptionSummary> {
+    let token =
+        ClientConfig::get_auth_token().ok_or_else(|| core_common::anyhow::anyhow!("未登录"))?;
+    let api_url = ClientConfig::get_api_url();
+    if api_url.is_empty() {
+        return Err(core_common::anyhow::anyhow!("未配置服务器地址"));
+    }
+
+    let client = build_client()?;
+    let url = format!("{}/api/subscription/my", api_url);
+    let resp: ApiResponse<serde_json::Value> = client.get(&url).bearer_auth(&token).send()?.json()?;
+
+    let data = resp.data.unwrap_or_default();
+    Ok(SubscriptionSummary {
+        plan_display_name: data["plan_display_name"]
+            .as_str()
+            .unwrap_or("免费版")
+            .to_owned(),
+        device_used: data["current_device_count"].as_i64().unwrap_or(0),
+        device_limit: data["device_limit"].as_i64().unwrap_or(0),
+        expires_at: data["expires_at"].as_str().unwrap_or("").to_owned(),
+    })
+}
+
 /// 获取当前用户的信息（用于 profile 展示）
 pub fn get_user_info() -> ResultType<UserInfo> {
     let token =

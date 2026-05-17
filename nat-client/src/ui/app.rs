@@ -202,7 +202,7 @@ fn poll_and_update(w: &AppWindow, ipc_port: u16, tray: Option<Arc<Mutex<TrayMana
     }
 
     // ── 认证状态 ──────────────────────────────────────────────────────────────
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&auth) {
+    let logged_in = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&auth) {
         if let Some(a) = v.get("auth") {
             let logged_in = a["logged_in"].as_bool().unwrap_or(false);
             w.set_logged_in(logged_in);
@@ -211,6 +211,32 @@ fn poll_and_update(w: &AppWindow, ipc_port: u16, tray: Option<Arc<Mutex<TrayMana
 
             let remaining = a["token_remaining_secs"].as_i64().unwrap_or(0);
             w.set_token_remaining(format_duration(remaining).into());
+            logged_in
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // ── 订阅信息（仅登录时拉取）────────────────────────────────────────────────
+    if logged_in {
+        let sub_resp = blocking_ipc(ipc_port, r#"{"cmd":"auth_subscription"}"#);
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&sub_resp) {
+            if let Some(s) = v.get("subscription") {
+                w.set_sub_plan(s["plan_display_name"].as_str().unwrap_or("免费版").into());
+                w.set_sub_device_used(s["device_used"].as_i64().unwrap_or(0) as i32);
+                w.set_sub_device_limit(s["device_limit"].as_i64().unwrap_or(0) as i32);
+                let exp = s["expires_at"].as_str().unwrap_or("");
+                let exp_display = if exp.is_empty() {
+                    String::new()
+                } else if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(exp) {
+                    dt.format("%Y-%m-%d").to_string()
+                } else {
+                    exp.to_owned()
+                };
+                w.set_sub_expires(exp_display.into());
+            }
         }
     }
 }

@@ -699,6 +699,10 @@ component AccountPage inherits VerticalLayout {
     in property <string> username;
     in property <string> role;
     in property <string> token-remaining;
+    in property <string> sub-plan;
+    in property <int> sub-device-used;
+    in property <int> sub-device-limit;
+    in property <string> sub-expires;
     in property <bool> busy;
     in property <string> status-msg;
     in property <bool> status-ok;
@@ -801,6 +805,71 @@ component AccountPage inherits VerticalLayout {
                     danger: true;
                     clicked => {
                         root.do-logout();
+                    }
+                }
+            }
+        }
+
+        // 订阅信息
+        Card {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                HorizontalLayout {
+                    Text {
+                        text: "我的套餐";
+                        color: Palette.text-bright;
+                        font-size: 15px;
+                        font-weight: 600;
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                    }
+                    Rectangle {
+                        width: 80px;
+                        height: 22px;
+                        border-radius: 4px;
+                        background: #1864ab22;
+                        Text {
+                            text: root.sub-plan == "" ? "免费版" : root.sub-plan;
+                            color: #1864ab;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 24px;
+                    VerticalLayout {
+                        spacing: 3px;
+                        Label {
+                            text: "设备使用";
+                            font-size: 11px;
+                            color: Palette.text-dim;
+                        }
+                        Text {
+                            text: root.sub-device-limit > 0
+                                ? root.sub-device-used + " / " + root.sub-device-limit + " 台"
+                                : root.sub-device-used + " 台（不限）";
+                            color: Palette.text-bright;
+                            font-size: 14px;
+                            font-weight: 600;
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 3px;
+                        Label {
+                            text: "到期时间";
+                            font-size: 11px;
+                            color: Palette.text-dim;
+                        }
+                        Text {
+                            text: root.sub-expires == "" ? "永久" : root.sub-expires;
+                            color: Palette.text-bright;
+                            font-size: 14px;
+                            font-weight: 600;
+                        }
                     }
                 }
             }
@@ -1194,6 +1263,10 @@ export component AppWindow inherits Window {
     in property <string> username;
     in property <string> role;
     in property <string> token-remaining;
+    in property <string> sub-plan;
+    in property <int> sub-device-used;
+    in property <int> sub-device-limit;
+    in property <string> sub-expires;
     in property <[ActiveConn]> connections;
     in property <[LanPeer]> lan-peers;
     in property <[BoundDevice]> devices;
@@ -1443,6 +1516,10 @@ export component AppWindow inherits Window {
                 username <=> root.username;
                 role <=> root.role;
                 token-remaining <=> root.token-remaining;
+                sub-plan <=> root.sub-plan;
+                sub-device-used <=> root.sub-device-used;
+                sub-device-limit <=> root.sub-device-limit;
+                sub-expires <=> root.sub-expires;
                 busy <=> root.account-busy;
                 status-msg <=> root.account-status;
                 status-ok <=> root.account-status-ok;

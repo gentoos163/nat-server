@@ -108,6 +108,8 @@ struct IpcResponse {
     pub devices: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscription: Option<serde_json::Value>,
     // ── 转发规则 / 服务扫描 ────────────────────────────────────────────
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rules: Option<Vec<serde_json::Value>>,
@@ -130,6 +132,7 @@ impl Default for IpcResponse {
             auth: None,
             devices: None,
             user: None,
+            subscription: None,
             rules: None,
             services: None,
         }
@@ -511,6 +514,26 @@ async fn dispatch(req: IpcRequest) -> IpcResponse {
             match result {
                 Ok(_) => IpcResponse {
                     ok: Some(true),
+                    ..Default::default()
+                },
+                Err(e) => IpcResponse {
+                    error: Some(format!("{}", e)),
+                    ..Default::default()
+                },
+            }
+        }
+
+        // ── 获取订阅信息 ────────────────────────────────────────────────────────
+        // 请求: {"cmd":"auth_subscription"}
+        // 响应: {"subscription":{"plan_display_name":"专业版","device_used":3,"device_limit":20,"expires_at":""}}
+        "auth_subscription" => {
+            let result = tokio::task::spawn_blocking(auth::get_my_subscription)
+                .await
+                .unwrap_or_else(|e| Err(core_common::anyhow::anyhow!("{}", e)));
+
+            match result {
+                Ok(sub) => IpcResponse {
+                    subscription: Some(serde_json::to_value(sub).unwrap_or_default()),
                     ..Default::default()
                 },
                 Err(e) => IpcResponse {

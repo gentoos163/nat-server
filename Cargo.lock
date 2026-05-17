@@ -3999,6 +3999,7 @@ checksum = "139c4cf31c8b5f33d7e199446eff9c1e02decfc2f0eec2c8d71f65befa45b421"
 dependencies = [
  "displaydoc",
  "icu_locale_core",
+ "log",
  "serde",
  "stable_deref_trait",
  "writeable",
@@ -4932,9 +4933,11 @@ name = "nat-client"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "clap 4.6.1",
  "core_common",
  "env_logger 0.11.10",
+ "icu_provider",
  "image",
  "jsonwebtoken",
  "lazy_static",
