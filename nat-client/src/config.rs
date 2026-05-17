@@ -166,10 +166,47 @@ pub struct ClientConfig {
     /// 端口转发规则列表（对端连入时决定转发到哪个本地服务）
     #[serde(default)]
     pub forward_rules: Vec<ForwardRule>,
+
+    /// 界面语言（"zh" 或 "en"，默认中文）
+    #[serde(default = "default_language")]
+    pub language: String,
+
+    // ── SOCKS5 / HTTP 代理设置 ────────────────────────────────────────────────
+    /// 是否启用 SOCKS5 代理
+    #[serde(default)]
+    pub socks5_enabled: bool,
+
+    /// SOCKS5 代理本地监听端口（默认 1080）
+    #[serde(default = "default_socks5_port")]
+    pub socks5_port: u16,
+
+    /// SOCKS5 出口 nat-client 的 peer_id
+    #[serde(default)]
+    pub socks5_exit_peer: String,
+
+    /// 是否启用 HTTP CONNECT 代理
+    #[serde(default)]
+    pub http_proxy_enabled: bool,
+
+    /// HTTP CONNECT 代理本地监听端口（默认 8118）
+    #[serde(default = "default_http_proxy_port")]
+    pub http_proxy_port: u16,
+}
+
+fn default_language() -> String {
+    "zh".to_owned()
 }
 
 fn default_ipc_port() -> u16 {
     21114
+}
+
+fn default_socks5_port() -> u16 {
+    1080
+}
+
+fn default_http_proxy_port() -> u16 {
+    8118
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -398,6 +435,30 @@ impl ClientConfig {
 
     pub fn set_api_url(url: &str) {
         Self::update(|c| c.api_url = url.to_owned());
+    }
+
+    // ── 语言设置 ─────────────────────────────────────────────────────────────
+
+    pub fn get_language() -> String {
+        CONFIG.read().unwrap().language.clone()
+    }
+
+    pub fn set_language(lang: &str) {
+        Self::update(|c| c.language = lang.to_owned());
+    }
+
+    // ── 代理设置 ─────────────────────────────────────────────────────────────
+
+    /// 返回 SOCKS5 代理配置：(enabled, port, exit_peer)
+    pub fn get_socks5_config() -> (bool, u16, String) {
+        let cfg = CONFIG.read().unwrap();
+        (cfg.socks5_enabled, cfg.socks5_port, cfg.socks5_exit_peer.clone())
+    }
+
+    /// 返回 HTTP 代理配置：(enabled, port)
+    pub fn get_http_proxy_config() -> (bool, u16) {
+        let cfg = CONFIG.read().unwrap();
+        (cfg.http_proxy_enabled, cfg.http_proxy_port)
     }
 
     // ── 转发规则管理 ─────────────────────────────────────────────────────────

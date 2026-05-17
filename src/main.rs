@@ -57,6 +57,9 @@ async fn main() -> ResultType<()> {
     let db = hbbs::database::Database::new(&db_url).await?;
     log::info!("数据库初始化完成: {}", db_url);
 
+    // 初始化启动时间（用于 sysinfo uptime 计算）
+    hbbs::settings_api::init_start_time();
+
     // 启动 API 服务器
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
         log::warn!("JWT_SECRET 环境变量未设置，使用默认密钥（生产环境请设置）");

@@ -2,7 +2,7 @@
 use askama::Template;
 use axum::{
     extract::{Extension, Query},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Json},
     routing::{delete, get, post, put},
     Router,
@@ -13,10 +13,11 @@ use std::collections::HashMap;
 use crate::{
     api::{ApiResponse, ApiState, LoginRequest, RegisterRequest, UserInfo},
     database::{CreateUserRequest, Database},
+    i18n,
     views::{
-        AdminSubscriptionsTemplate, DashboardTemplate, DevicesTemplate, ForgotPasswordTemplate,
-        LoginTemplate, MonitorTemplate, RegisterTemplate, ResetPasswordTemplate,
-        SubscriptionTemplate, UsersTemplate,
+        AdminSettingsTemplate, AdminSubscriptionsTemplate, DashboardTemplate, DevicesTemplate,
+        ForgotPasswordTemplate, LoginTemplate, MonitorTemplate, RegisterTemplate,
+        ResetPasswordTemplate, SubscriptionTemplate, UsersTemplate,
     },
 };
 
@@ -31,11 +32,49 @@ pub struct ResetPasswordRequest {
     pub password: String,
 }
 
+#[derive(Deserialize)]
+pub struct SetLangQuery {
+    pub lang: Option<String>,
+}
+
+/// 从请求头中读取 lang cookie 和 Accept-Language，返回语言代码
+fn detect_lang(headers: &HeaderMap) -> String {
+    // 解析 Cookie 头中的 lang=zh|en
+    let lang_cookie = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|part| {
+                let part = part.trim();
+                if let Some(val) = part.strip_prefix("lang=") {
+                    Some(val.trim().to_string())
+                } else {
+                    None
+                }
+            })
+        });
+
+    let accept_lang = headers
+        .get("accept-language")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    i18n::detect(
+        lang_cookie.as_deref(),
+        accept_lang.as_deref(),
+    )
+    .to_string()
+}
+
 // Web handlers
-pub async fn login_page() -> impl IntoResponse {
+pub async fn login_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = LoginTemplate {
-        title: "用户登录".to_string(),
+        title: t.login_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Html(
         template
@@ -44,10 +83,14 @@ pub async fn login_page() -> impl IntoResponse {
     )
 }
 
-pub async fn register_page() -> impl IntoResponse {
+pub async fn register_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = RegisterTemplate {
-        title: "用户注册".to_string(),
+        title: t.register_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Html(
         template
@@ -56,10 +99,14 @@ pub async fn register_page() -> impl IntoResponse {
     )
 }
 
-pub async fn forgot_password_page() -> impl IntoResponse {
+pub async fn forgot_password_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = ForgotPasswordTemplate {
-        title: "忘记密码".to_string(),
+        title: t.forgot_password.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Html(
         template
@@ -69,14 +116,18 @@ pub async fn forgot_password_page() -> impl IntoResponse {
 }
 
 pub async fn reset_password_page(
+    headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let token = params.get("token").unwrap_or(&String::new()).clone();
-
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = ResetPasswordTemplate {
         title: "重置密码".to_string(),
         current_user: None,
         token,
+        t,
+        lang,
     };
     Html(
         template
@@ -86,11 +137,16 @@ pub async fn reset_password_page(
 }
 
 pub async fn dashboard_page(
+    headers: HeaderMap,
     Extension(_state): Extension<ApiState>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = DashboardTemplate {
-        title: "控制台".to_string(),
+        title: t.dashboard_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Ok(Html(
         template
@@ -100,11 +156,16 @@ pub async fn dashboard_page(
 }
 
 pub async fn devices_page(
+    headers: HeaderMap,
     Extension(_state): Extension<ApiState>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = DevicesTemplate {
-        title: "设备管理".to_string(),
+        title: t.devices_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Ok(Html(
         template
@@ -114,11 +175,16 @@ pub async fn devices_page(
 }
 
 pub async fn users_page(
+    headers: HeaderMap,
     Extension(_state): Extension<ApiState>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = UsersTemplate {
-        title: "用户管理".to_string(),
+        title: t.users_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Ok(Html(
         template
@@ -127,10 +193,14 @@ pub async fn users_page(
     ))
 }
 
-pub async fn monitor_page() -> impl IntoResponse {
+pub async fn monitor_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = MonitorTemplate {
-        title: "连接监控".to_string(),
+        title: t.monitor_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Html(
         template
@@ -139,10 +209,14 @@ pub async fn monitor_page() -> impl IntoResponse {
     )
 }
 
-pub async fn subscription_page() -> impl IntoResponse {
+pub async fn subscription_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = SubscriptionTemplate {
-        title: "我的订阅".to_string(),
+        title: t.subscription_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Html(
         template
@@ -151,16 +225,64 @@ pub async fn subscription_page() -> impl IntoResponse {
     )
 }
 
-pub async fn admin_subscriptions_page() -> impl IntoResponse {
+pub async fn admin_subscriptions_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
     let template = AdminSubscriptionsTemplate {
-        title: "订阅管理".to_string(),
+        title: t.admin_sub_title.to_string(),
         current_user: None,
+        t,
+        lang,
     };
     Html(
         template
             .render()
             .unwrap_or_else(|_| "Template error".to_string()),
     )
+}
+
+pub async fn admin_settings_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
+    let template = AdminSettingsTemplate {
+        title: t.settings_title.to_string(),
+        current_user: None,
+        t,
+        lang,
+    };
+    Html(
+        template
+            .render()
+            .unwrap_or_else(|_| "Template error".to_string()),
+    )
+}
+
+/// 语言切换：设置 lang cookie，重定向回 Referer 或 /dashboard
+pub async fn set_lang(
+    headers: HeaderMap,
+    Query(query): Query<SetLangQuery>,
+) -> impl IntoResponse {
+    let lang = match query.lang.as_deref() {
+        Some("en") => "en",
+        _ => "zh",
+    };
+
+    let redirect_to = headers
+        .get("referer")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("/dashboard")
+        .to_string();
+
+    // 构建响应：设置 cookie 并重定向
+    axum::response::Response::builder()
+        .status(302)
+        .header("Location", redirect_to)
+        .header(
+            "Set-Cookie",
+            format!("lang={}; Path=/; SameSite=Lax; Max-Age=31536000", lang),
+        )
+        .body(axum::body::Body::empty())
+        .unwrap()
 }
 
 // API handlers for password reset
@@ -385,6 +507,9 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
         .route("/monitor", get(monitor_page))
         .route("/subscription", get(subscription_page))
         .route("/admin/subscriptions", get(admin_subscriptions_page))
+        .route("/admin/settings", get(admin_settings_page))
+        // 语言切换路由
+        .route("/set-lang", get(set_lang))
         // API路由
         .route("/api/login", post(login))
         .route("/api/register", post(register))
@@ -432,6 +557,31 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
             put(crate::api::admin_update_subscription)
                 .delete(crate::api::admin_deactivate_subscription),
         )
+        // 系统设置 API
+        .route(
+            "/api/admin/settings",
+            get(crate::settings_api::get_settings).put(crate::settings_api::update_settings),
+        )
+        // 黑名单 API
+        .route(
+            "/api/admin/blacklist",
+            get(crate::settings_api::get_blacklist).post(crate::settings_api::add_blacklist),
+        )
+        .route(
+            "/api/admin/blacklist/:ip",
+            delete(crate::settings_api::delete_blacklist),
+        )
+        // 阻止名单 API
+        .route(
+            "/api/admin/blocklist",
+            get(crate::settings_api::get_blocklist).post(crate::settings_api::add_blocklist),
+        )
+        .route(
+            "/api/admin/blocklist/:ip",
+            delete(crate::settings_api::delete_blocklist),
+        )
+        // 系统信息 API
+        .route("/api/admin/sysinfo", get(crate::settings_api::get_sysinfo))
         .layer(axum::middleware::from_fn(cors_middleware))
         .layer(axum::Extension(state))
 }

@@ -1,13 +1,14 @@
 {% extends "layout.html" %}
-{% block title %}订阅管理 - {% endblock %}
+{% block title %}{{ t.admin_sub_title }} - {% endblock %}
 
 {% block nav_links %}
-<a href="/dashboard">控制台</a>
-<a href="/devices">设备管理</a>
-<a href="/subscription">我的订阅</a>
-<a href="/users">用户管理</a>
-<a href="/admin/subscriptions" class="active">订阅管理</a>
-<a href="/monitor">连接监控</a>
+<a href="/dashboard">{{ t.nav_dashboard }}</a>
+<a href="/devices">{{ t.nav_devices }}</a>
+<a href="/subscription">{{ t.nav_subscription }}</a>
+<a href="/users">{{ t.nav_users }}</a>
+<a href="/admin/subscriptions" class="active">{{ t.nav_subscriptions_admin }}</a>
+<a href="/admin/settings" class="nav-admin-only" style="display:none">{{ t.nav_settings }}</a>
+<a href="/monitor">{{ t.nav_monitor }}</a>
 {% endblock %}
 
 {% block extra_css %}
@@ -54,19 +55,19 @@
 {% block content %}
 <!-- 筛选栏 -->
 <div class="filter-bar">
-    <input type="number" id="filter-user" placeholder="用户 ID" min="1" />
+    <input type="number" id="filter-user" placeholder="{{ t.admin_sub_user_id }}" min="1" />
     <select id="filter-plan">
         <option value="">全部套餐</option>
     </select>
     <select id="filter-status">
         <option value="">全部状态</option>
-        <option value="active">有效</option>
-        <option value="inactive">已停用</option>
+        <option value="active">{{ t.admin_sub_active }}</option>
+        <option value="inactive">{{ t.admin_sub_inactive }}</option>
         <option value="expired">已过期</option>
     </select>
     <button class="btn btn-secondary" onclick="loadSubs()">筛选</button>
     <div class="spacer"></div>
-    <button class="btn btn-primary" onclick="showCreateModal()">+ 激活订阅</button>
+    <button class="btn btn-primary" onclick="showCreateModal()">+ {{ t.admin_sub_create }}</button>
 </div>
 
 <!-- 订阅表格 -->
@@ -75,13 +76,13 @@
         <thead>
             <tr>
                 <th>ID</th>
-                <th>用户 ID</th>
-                <th>套餐</th>
-                <th>状态</th>
+                <th>{{ t.admin_sub_user_id }}</th>
+                <th>{{ t.admin_sub_plan }}</th>
+                <th>{{ t.label_status }}</th>
                 <th>开始时间</th>
-                <th>到期时间</th>
-                <th>备注</th>
-                <th>操作</th>
+                <th>{{ t.admin_sub_expires }}</th>
+                <th>{{ t.settings_comment }}</th>
+                <th>{{ t.label_actions }}</th>
             </tr>
         </thead>
         <tbody id="subs-body">
@@ -89,7 +90,7 @@
                 <td colspan="8">
                     <div class="empty-state">
                         <div class="empty-icon">📋</div>
-                        <p>正在加载…</p>
+                        <p>{{ t.label_loading }}</p>
                     </div>
                 </td>
             </tr>
@@ -106,25 +107,25 @@
 <!-- 激活订阅模态框 -->
 <div class="modal-overlay" id="create-modal">
     <div class="modal-box">
-        <div class="modal-title">激活订阅</div>
+        <div class="modal-title">{{ t.admin_sub_create }}</div>
         <div class="form-group">
-            <label>用户 ID</label>
-            <input type="number" id="c-user-id" placeholder="输入用户 ID" min="1" />
+            <label>{{ t.admin_sub_user_id }}</label>
+            <input type="number" id="c-user-id" placeholder="{{ t.admin_sub_user_id }}" min="1" />
         </div>
         <div class="form-group">
-            <label>套餐</label>
+            <label>{{ t.admin_sub_plan }}</label>
             <select id="c-plan"></select>
         </div>
         <div class="form-group">
-            <label>到期时间（留空为永久）</label>
+            <label>{{ t.admin_sub_expires }}（留空为永久）</label>
             <input type="datetime-local" id="c-expires" />
         </div>
         <div class="form-group">
-            <label>备注</label>
+            <label>{{ t.settings_comment }}</label>
             <textarea id="c-notes" placeholder="可选备注" style="resize:vertical;height:72px"></textarea>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="hideCreateModal()">取消</button>
+            <button class="btn btn-secondary" onclick="hideCreateModal()">{{ t.btn_cancel }}</button>
             <button class="btn btn-primary" onclick="submitCreate()">确认激活</button>
         </div>
     </div>
@@ -133,23 +134,23 @@
 <!-- 编辑订阅模态框 -->
 <div class="modal-overlay" id="edit-modal">
     <div class="modal-box">
-        <div class="modal-title">编辑订阅</div>
+        <div class="modal-title">{{ t.btn_edit }}</div>
         <input type="hidden" id="e-sub-id" />
         <div class="form-group">
-            <label>套餐</label>
+            <label>{{ t.admin_sub_plan }}</label>
             <select id="e-plan"></select>
         </div>
         <div class="form-group">
-            <label>到期时间（留空为永久）</label>
+            <label>{{ t.admin_sub_expires }}（留空为永久）</label>
             <input type="datetime-local" id="e-expires" />
         </div>
         <div class="form-group">
-            <label>备注</label>
+            <label>{{ t.settings_comment }}</label>
             <textarea id="e-notes" style="resize:vertical;height:72px"></textarea>
         </div>
         <div class="modal-footer">
-            <button class="btn btn-secondary" onclick="hideEditModal()">取消</button>
-            <button class="btn btn-primary" onclick="submitEdit()">保存</button>
+            <button class="btn btn-secondary" onclick="hideEditModal()">{{ t.btn_cancel }}</button>
+            <button class="btn btn-primary" onclick="submitEdit()">{{ t.btn_save }}</button>
         </div>
     </div>
 </div>
@@ -234,10 +235,10 @@
         if (!sub.is_active) return '<span class="badge badge-gray">已停用</span>';
         if (sub.expires_at && new Date(sub.expires_at) < new Date())
             return '<span class="badge badge-orange">已过期</span>';
-        return '<span class="badge badge-green">有效</span>';
+        return '<span class="badge badge-green">{{ t.admin_sub_active }}</span>';
     }
 
-    function fmtDate(d) { return d ? new Date(d).toLocaleDateString("zh-CN") : "永久"; }
+    function fmtDate(d) { return d ? new Date(d).toLocaleDateString() : "{{ t.subscription_forever }}"; }
 
     function renderTable(subs) {
         const tbody = document.getElementById("subs-body");
@@ -260,7 +261,7 @@
                 <td style="color:var(--text2);font-size:13px">${notesEsc}</td>
                 <td style="white-space:nowrap">
                     <button class="btn btn-xs btn-secondary"
-                        onclick="showEditModal(${s.id},'${planEsc}','${s.expires_at || ""}','${notesEsc}')">编辑</button>
+                        onclick="showEditModal(${s.id},'${planEsc}','${s.expires_at || ""}','${notesEsc}')">{{ t.btn_edit }}</button>
                     <button class="btn btn-xs btn-danger" onclick="deactivateSub(${s.id})">停用</button>
                 </td>
             </tr>`;

@@ -21,6 +21,7 @@
 //! ```
 
 use crate::config::ClientConfig;
+use crate::i18n;
 use crate::ui::tray::{TrayAction, TrayManager};
 use core_common::log;
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -42,6 +43,10 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
 
     // 初始化配置显示值
     init_config_fields(&window);
+
+    // 应用当前语言翻译
+    let lang = ClientConfig::get_language();
+    apply_translations(&window, &lang);
 
     // ── 系统托盘 ─────────────────────────────────────────────────────────────
     let tray = match TrayManager::new() {
@@ -125,6 +130,93 @@ fn init_config_fields(w: &AppWindow) {
     w.set_cfg_api_url(cfg.api_url.as_str().into());
     w.set_cfg_ipc_port(cfg.ipc_port.to_string().as_str().into());
     w.set_peer_id(ClientConfig::get_id().as_str().into());
+
+    // 代理配置
+    let (s5_en, s5_port, s5_peer) = ClientConfig::get_socks5_config();
+    w.set_socks5_enabled(s5_en);
+    w.set_socks5_exit_peer(s5_peer.as_str().into());
+    w.set_socks5_port_str(s5_port.to_string().as_str().into());
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 多语言翻译应用：将翻译字符串推送到 Slint Tr global
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn apply_translations(w: &AppWindow, lang: &str) {
+    let tr = i18n::get(lang);
+    let g = w.global::<Tr>();
+    g.set_nav_dashboard(tr.nav_dashboard.into());
+    g.set_nav_connections(tr.nav_connections.into());
+    g.set_nav_peers(tr.nav_peers.into());
+    g.set_nav_account(tr.nav_account.into());
+    g.set_nav_devices(tr.nav_devices.into());
+    g.set_nav_settings(tr.nav_settings.into());
+    g.set_btn_save(tr.btn_save.into());
+    g.set_btn_cancel(tr.btn_cancel.into());
+    g.set_btn_refresh(tr.btn_refresh.into());
+    g.set_btn_add(tr.btn_add.into());
+    g.set_btn_delete(tr.btn_delete.into());
+    g.set_btn_connect(tr.btn_connect.into());
+    g.set_btn_login(tr.btn_login.into());
+    g.set_btn_logout(tr.btn_logout.into());
+    g.set_btn_register(tr.btn_register.into());
+    g.set_btn_change_password(tr.btn_change_password.into());
+    g.set_status_online(tr.status_online.into());
+    g.set_status_offline(tr.status_offline.into());
+    g.set_status_loading(tr.status_loading.into());
+    g.set_status_processing(tr.status_processing.into());
+    g.set_dashboard_title(tr.dashboard_title.into());
+    g.set_dashboard_peer_id(tr.dashboard_peer_id.into());
+    g.set_dashboard_server(tr.dashboard_server.into());
+    g.set_dashboard_nat_type(tr.dashboard_nat_type.into());
+    g.set_dashboard_online(tr.dashboard_online.into());
+    g.set_dashboard_offline(tr.dashboard_offline.into());
+    g.set_conn_title(tr.conn_title.into());
+    g.set_conn_peer_id(tr.conn_peer_id.into());
+    g.set_conn_local_port(tr.conn_local_port.into());
+    g.set_conn_type(tr.conn_type.into());
+    g.set_conn_sent(tr.conn_sent.into());
+    g.set_conn_recv(tr.conn_recv.into());
+    g.set_conn_close(tr.conn_close.into());
+    g.set_conn_no_connections(tr.conn_no_connections.into());
+    g.set_conn_input_peer_id(tr.conn_input_peer_id.into());
+    g.set_conn_input_port(tr.conn_input_port.into());
+    g.set_peers_title(tr.peers_title.into());
+    g.set_peers_scanning(tr.peers_scanning.into());
+    g.set_peers_discover(tr.peers_discover.into());
+    g.set_peers_no_peers(tr.peers_no_peers.into());
+    g.set_peers_connect(tr.peers_connect.into());
+    g.set_account_title(tr.account_title.into());
+    g.set_account_username(tr.account_username.into());
+    g.set_account_password(tr.account_password.into());
+    g.set_account_email(tr.account_email.into());
+    g.set_account_device_name(tr.account_device_name.into());
+    g.set_account_old_password(tr.account_old_password.into());
+    g.set_account_new_password(tr.account_new_password.into());
+    g.set_account_change_password(tr.account_change_password.into());
+    g.set_account_token_remaining(tr.account_token_remaining.into());
+    g.set_account_register_link(tr.account_register_link.into());
+    g.set_account_login_link(tr.account_login_link.into());
+    g.set_account_sub_plan(tr.account_sub_plan.into());
+    g.set_account_sub_current(tr.account_sub_current.into());
+    g.set_account_sub_device_usage(tr.account_sub_device_usage.into());
+    g.set_account_sub_expires(tr.account_sub_expires.into());
+    g.set_account_sub_forever(tr.account_sub_forever.into());
+    g.set_devices_title(tr.devices_title.into());
+    g.set_devices_id(tr.devices_id.into());
+    g.set_devices_name(tr.devices_name.into());
+    g.set_devices_remove(tr.devices_remove.into());
+    g.set_devices_no_devices(tr.devices_no_devices.into());
+    g.set_settings_title(tr.settings_title.into());
+    g.set_settings_server(tr.settings_server.into());
+    g.set_settings_relay(tr.settings_relay.into());
+    g.set_settings_peer_id(tr.settings_peer_id.into());
+    g.set_settings_protocol(tr.settings_protocol.into());
+    g.set_settings_language(tr.settings_language.into());
+    g.set_settings_open_config(tr.settings_open_config.into());
+    g.set_settings_save(tr.settings_save.into());
+    g.set_lang_zh(tr.lang_zh.into());
+    g.set_lang_en(tr.lang_en.into());
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -202,7 +294,7 @@ fn poll_and_update(w: &AppWindow, ipc_port: u16, tray: Option<Arc<Mutex<TrayMana
     }
 
     // ── 认证状态 ──────────────────────────────────────────────────────────────
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&auth) {
+    let logged_in = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&auth) {
         if let Some(a) = v.get("auth") {
             let logged_in = a["logged_in"].as_bool().unwrap_or(false);
             w.set_logged_in(logged_in);
@@ -211,6 +303,32 @@ fn poll_and_update(w: &AppWindow, ipc_port: u16, tray: Option<Arc<Mutex<TrayMana
 
             let remaining = a["token_remaining_secs"].as_i64().unwrap_or(0);
             w.set_token_remaining(format_duration(remaining).into());
+            logged_in
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // ── 订阅信息（仅登录时拉取）────────────────────────────────────────────────
+    if logged_in {
+        let sub_resp = blocking_ipc(ipc_port, r#"{"cmd":"auth_subscription"}"#);
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&sub_resp) {
+            if let Some(s) = v.get("subscription") {
+                w.set_sub_plan(s["plan_display_name"].as_str().unwrap_or("免费版").into());
+                w.set_sub_device_used(s["device_used"].as_i64().unwrap_or(0) as i32);
+                w.set_sub_device_limit(s["device_limit"].as_i64().unwrap_or(0) as i32);
+                let exp = s["expires_at"].as_str().unwrap_or("");
+                let exp_display = if exp.is_empty() {
+                    String::new()
+                } else if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(exp) {
+                    dt.format("%Y-%m-%d").to_string()
+                } else {
+                    exp.to_owned()
+                };
+                w.set_sub_expires(exp_display.into());
+            }
         }
     }
 }
@@ -535,6 +653,60 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                 w.set_show_register(!cur);
                 w.set_account_status("".into());
             }
+        });
+    }
+
+    // ── 切换语言 ─────────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_set_language(move |lang| {
+            let lang_str = lang.to_string();
+            ClientConfig::set_language(&lang_str);
+            if let Some(w) = win.upgrade() {
+                apply_translations(&w, &lang_str);
+            }
+        });
+    }
+
+    // ── 切换 SOCKS5 代理开关 ──────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_toggle_socks5(move || {
+            ClientConfig::update(|c| c.socks5_enabled = !c.socks5_enabled);
+            if let Some(w) = win.upgrade() {
+                let (s5_en, _, _) = ClientConfig::get_socks5_config();
+                w.set_socks5_enabled(s5_en);
+                w.set_settings_status(
+                    if s5_en { "✅ SOCKS5 代理已启用（重启后生效）".into() }
+                    else { "SOCKS5 代理已禁用".into() }
+                );
+            }
+        });
+    }
+
+    // ── 保存代理设置 ─────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_save_proxy_settings(move || {
+            let Some(w) = win.upgrade() else { return };
+            let exit_peer = w.get_socks5_exit_peer().to_string();
+            let port_str = w.get_socks5_port_str().to_string();
+            let port: u16 = port_str.parse().unwrap_or(1080);
+
+            ClientConfig::update(|c| {
+                c.socks5_exit_peer = exit_peer.clone();
+                c.socks5_port = port;
+            });
+
+            w.set_settings_status("✅ 代理设置已保存（重启后生效）".into());
+            log::info!("[gui] 代理设置已保存: exit_peer={} port={}", exit_peer, port);
+
+            // 通过 IPC 保存设置
+            let cmd = format!(
+                r#"{{"cmd":"proxy_save","port":{},"exit_peer":"{}"}}"#,
+                port, exit_peer
+            );
+            blocking_ipc(ipc_port, &cmd);
         });
     }
 }

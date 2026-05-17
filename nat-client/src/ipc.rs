@@ -78,6 +78,13 @@ pub struct IpcRequest {
     pub new_password: String,
     #[serde(default)]
     pub device_id: String,
+    // ── 代理相关参数 ───────────────────────────────────────────────────
+    /// 代理出口 peer_id（用于 proxy_start 命令）
+    #[serde(default)]
+    pub exit_peer: String,
+    /// 代理端口（用于 proxy_start 命令）
+    #[serde(default)]
+    pub port: u16,
 }
 
 /// IPC 响应（通用）
@@ -108,11 +115,16 @@ struct IpcResponse {
     pub devices: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscription: Option<serde_json::Value>,
     // ── 转发规则 / 服务扫描 ────────────────────────────────────────────
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rules: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub services: Option<Vec<serde_json::Value>>,
+    // ── 代理状态 ────────────────────────────────────────────────────────
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy: Option<serde_json::Value>,
 }
 
 impl Default for IpcResponse {
@@ -130,8 +142,10 @@ impl Default for IpcResponse {
             auth: None,
             devices: None,
             user: None,
+            subscription: None,
             rules: None,
             services: None,
+            proxy: None,
         }
     }
 }
@@ -520,6 +534,26 @@ async fn dispatch(req: IpcRequest) -> IpcResponse {
             }
         }
 
+        // ── 获取订阅信息 ────────────────────────────────────────────────────────
+        // 请求: {"cmd":"auth_subscription"}
+        // 响应: {"subscription":{"plan_display_name":"专业版","device_used":3,"device_limit":20,"expires_at":""}}
+        "auth_subscription" => {
+            let result = tokio::task::spawn_blocking(auth::get_my_subscription)
+                .await
+                .unwrap_or_else(|e| Err(core_common::anyhow::anyhow!("{}", e)));
+
+            match result {
+                Ok(sub) => IpcResponse {
+                    subscription: Some(serde_json::to_value(sub).unwrap_or_default()),
+                    ..Default::default()
+                },
+                Err(e) => IpcResponse {
+                    error: Some(format!("{}", e)),
+                    ..Default::default()
+                },
+            }
+        }
+
         // ── 获取用户信息 ────────────────────────────────────────────────────────
         // 请求: {"cmd":"auth_profile"}
         "auth_profile" => {
@@ -611,6 +645,72 @@ async fn dispatch(req: IpcRequest) -> IpcResponse {
                 .collect();
             IpcResponse {
                 services: Some(json_svcs),
+                ..Default::default()
+            }
+        }
+
+        // ── 代理状态查询 ─────────────────────────────────────────────────────────
+        // 请求: {"cmd":"proxy_status"}
+        // 响应: {"proxy":{"socks5_enabled":true,"socks5_port":1080,"exit_peer":"xxx"}}
+        "proxy_status" => {
+            let (s5_en, s5_port, s5_peer) = ClientConfig::get_socks5_config();
+            let (http_en, http_port) = ClientConfig::get_http_proxy_config();
+            IpcResponse {
+                proxy: Some(serde_json::json!({
+                    "socks5_enabled": s5_en,
+                    "socks5_port": s5_port,
+                    "exit_peer": s5_peer,
+                    "http_enabled": http_en,
+                    "http_port": http_port,
+                })),
+                ..Default::default()
+            }
+        }
+
+        // ── 保存代理设置 ─────────────────────────────────────────────────────────
+        // 请求: {"cmd":"proxy_save","port":1080,"exit_peer":"xxx"}
+        // 响应: {"ok":true}
+        "proxy_save" => {
+            let port = if req.port == 0 { 1080 } else { req.port };
+            ClientConfig::update(|c| {
+                c.socks5_port = port;
+                if !req.exit_peer.is_empty() {
+                    c.socks5_exit_peer = req.exit_peer.clone();
+                }
+            });
+            IpcResponse {
+                ok: Some(true),
+                ..Default::default()
+            }
+        }
+
+        // ── 启用/禁用代理 ─────────────────────────────────────────────────────────
+        // 请求: {"cmd":"proxy_enable","exit_peer":"xxx"}
+        // 响应: {"ok":true}
+        "proxy_enable" => {
+            ClientConfig::update(|c| {
+                c.socks5_enabled = true;
+                if !req.exit_peer.is_empty() {
+                    c.socks5_exit_peer = req.exit_peer.clone();
+                }
+                if req.port != 0 {
+                    c.socks5_port = req.port;
+                }
+            });
+            IpcResponse {
+                ok: Some(true),
+                ..Default::default()
+            }
+        }
+
+        // 请求: {"cmd":"proxy_disable"}
+        // 响应: {"ok":true}
+        "proxy_disable" => {
+            ClientConfig::update(|c| {
+                c.socks5_enabled = false;
+            });
+            IpcResponse {
+                ok: Some(true),
                 ..Default::default()
             }
         }

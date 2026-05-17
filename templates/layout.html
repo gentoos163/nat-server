@@ -136,6 +136,30 @@
                 background: rgba(0, 113, 227, 0.08);
             }
 
+            /* ── 语言切换 ────────────────────────────────────────── */
+            .lang-switcher {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            .lang-switcher a {
+                color: var(--text2);
+                text-decoration: none;
+                padding: 3px 7px;
+                border-radius: var(--radius-xs);
+                transition: background 0.15s, color 0.15s;
+            }
+            .lang-switcher a:hover {
+                background: rgba(0, 0, 0, 0.05);
+                color: var(--text);
+            }
+            .lang-switcher a.lang-active {
+                color: var(--blue);
+                background: rgba(0, 113, 227, 0.08);
+            }
+
             /* ── 页面主体 ────────────────────────────────────────── */
             .page {
                 max-width: 1100px;
@@ -562,15 +586,19 @@
             <a class="nav-brand" href="/dashboard">NAT <span>Server</span></a>
             <div class="nav-links">
                 {% block nav_links %}
-                <a href="/login">登录</a>
-                <a href="/register">注册</a>
+                <a href="/login">{{ t.nav_login }}</a>
+                <a href="/register">{{ t.nav_register }}</a>
                 {% endblock %}
             </div>
             <div class="nav-end" id="nav-end">
                 {% if let Some(user) = current_user %}
                 <span class="nav-user">{{ user.username }}</span>
-                <button class="nav-logout" onclick="logout()">退出</button>
+                <button class="nav-logout" onclick="logout()">{{ t.nav_logout }}</button>
                 {% endif %}
+                <div class="lang-switcher">
+                    <a href="/set-lang?lang=zh" class="{% if lang == "zh" %}lang-active{% endif %}">中</a>
+                    <a href="/set-lang?lang=en" class="{% if lang == "en" %}lang-active{% endif %}">EN</a>
+                </div>
             </div>
         </nav>
 
@@ -638,11 +666,18 @@
                 const navEnd = document.getElementById("nav-end");
                 /* 若服务端已渲染用户信息则跳过 */
                 if (navEnd && !navEnd.querySelector(".nav-user")) {
-                    navEnd.innerHTML =
+                    const logoutText = document.documentElement.lang === "en" ? "Logout" : "退出";
+                    const langSwitcher = navEnd.querySelector(".lang-switcher");
+                    const insertHtml =
                         '<span class="nav-user">' +
                         escapeHtml(user.username) +
                         "</span>" +
-                        '<button class="nav-logout" onclick="logout()">退出</button>';
+                        '<button class="nav-logout" onclick="logout()">' + logoutText + "</button>";
+                    if (langSwitcher) {
+                        langSwitcher.insertAdjacentHTML("beforebegin", insertHtml);
+                    } else {
+                        navEnd.innerHTML = insertHtml + navEnd.innerHTML;
+                    }
                 }
             });
 

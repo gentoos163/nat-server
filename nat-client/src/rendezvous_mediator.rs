@@ -30,6 +30,7 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Instant,
 };
+use tokio::net::TcpStream;
 
 /// 按配置的线路协议发送 `RendezvousMessage`（proto3 或 capnp）
 async fn send_rendezvous(
@@ -450,6 +451,13 @@ impl RendezvousMediator {
             "[mediator] RequestRelay peer={:?} peer_id={} uuid={} relay={}",
             peer_addr, rr.id, rr.uuid, rr.relay_server
         );
+
+        // 检测 proxy 模式 UUID（格式：proxy:<base64_target>:<hex8>）
+        if rr.uuid.starts_with("proxy:") {
+            let rz = self.clone();
+            return rz.handle_proxy_relay(rr).await;
+        }
+
         let relay_server = self.get_relay_server(rr.relay_server.clone());
         self.create_relay_connection(
             rr.socket_addr.to_vec(),
@@ -460,6 +468,78 @@ impl RendezvousMediator {
             rr.id,
         )
         .await
+    }
+
+    /// 处理 proxy 模式的 relay 请求：解析目标地址，连接 hbbr 并桥接到目标
+    async fn handle_proxy_relay(&self, rr: RequestRelay) -> ResultType<()> {
+        // UUID 格式: "proxy:<base64(host:port)>:<hex8>"
+        let parts: Vec<&str> = rr.uuid.splitn(3, ':').collect();
+        // parts[0] = "proxy", parts[1] = base64_target, parts[2] = hex8
+
+        let target = if parts.len() >= 2 {
+            use base64::Engine as _;
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(parts[1])
+                .ok()
+                .and_then(|b| String::from_utf8(b).ok())
+        } else {
+            None
+        };
+
+        let target = match target {
+            Some(t) => t,
+            None => {
+                log::warn!("[proxy] 无法解析 proxy UUID: {}", rr.uuid);
+                return Ok(());
+            }
+        };
+
+        // target = "host:port"
+        let (host, port_str) = match target.rsplit_once(':') {
+            Some(p) => p,
+            None => {
+                log::warn!("[proxy] 无效的 proxy 目标: {}", target);
+                return Ok(());
+            }
+        };
+        let port: u16 = port_str.parse().unwrap_or(0);
+        if port == 0 {
+            log::warn!("[proxy] 无效端口: {}", target);
+            return Ok(());
+        }
+
+        log::info!("[proxy] 收到代理请求，目标: {}:{}", host, port);
+
+        // 连接 hbbr，配对此 relay 请求
+        let relay_server = self.get_relay_server(rr.relay_server.clone());
+        let relay_addr = socket_client::check_port(&relay_server, RENDEZVOUS_PORT + 1);
+        let mut relay_conn = connect_tcp(relay_addr, CONNECT_TIMEOUT).await?;
+
+        // 发送 UUID 握手（与 port_forward.rs 一致：[len_byte, uuid_bytes...]）
+        let uuid_bytes = rr.uuid.as_bytes();
+        let mut handshake = Vec::new();
+        handshake.push(uuid_bytes.len() as u8);
+        handshake.extend_from_slice(uuid_bytes);
+        relay_conn.send_raw(handshake).await?;
+
+        // 连接目标
+        let target_addr = format!("{}:{}", host, port);
+        let target_stream = tokio::time::timeout(
+            std::time::Duration::from_millis(CONNECT_TIMEOUT),
+            TcpStream::connect(&target_addr),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("连接目标超时: {}", target_addr))?
+        .map_err(|e| anyhow::anyhow!("连接目标失败 {}: {}", target_addr, e))?;
+
+        log::info!("[proxy] 已连接目标 {}", target_addr);
+
+        // 桥接 relay_conn ↔ target_stream
+        tokio::spawn(async move {
+            bridge_relay_and_target(relay_conn, target_stream).await;
+        });
+
+        Ok(())
     }
 
     /// 连接中继服务器（hbbr）并建立双向数据隧道
@@ -664,4 +744,62 @@ pub async fn connect_to_peer(peer_id: String, local_port: u16) -> ResultType<u16
 
     log::info!("[mediator] 本地监听端口: {}", actual_port);
     Ok(actual_port)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 代理桥接：将 relay Stream 与目标 TcpStream 双向转发
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// 桥接 relay 连接与目标 TCP 连接（双向透明转发）
+async fn bridge_relay_and_target(relay: core_common::Stream, target: TcpStream) {
+    use std::sync::Arc;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        sync::Mutex,
+    };
+
+    let (mut tr, mut tw) = target.into_split();
+    let relay = Arc::new(Mutex::new(relay));
+
+    // 目标 → relay
+    let relay_send = Arc::clone(&relay);
+    let target_to_relay = tokio::spawn(async move {
+        let mut buf = vec![0u8; 32 * 1024];
+        loop {
+            let n = match tr.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            let mut r = relay_send.lock().await;
+            if r.send_raw(buf[..n].to_vec()).await.is_err() {
+                break;
+            }
+        }
+        log::debug!("[proxy] 目标→relay 通道关闭");
+    });
+
+    // relay → 目标
+    let relay_recv = Arc::clone(&relay);
+    let relay_to_target = tokio::spawn(async move {
+        loop {
+            let data = {
+                let mut r = relay_recv.lock().await;
+                r.next().await
+            };
+            match data {
+                Some(Ok(b)) => {
+                    if tw.write_all(&b).await.is_err() {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        log::debug!("[proxy] relay→目标 通道关闭");
+    });
+
+    tokio::select! {
+        _ = target_to_relay => {}
+        _ = relay_to_target => {}
+    }
 }

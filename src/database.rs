@@ -230,6 +230,7 @@ impl Database {
 
         self.migrate_users_add_role_column().await?;
         self.migrate_subscriptions().await?;
+        self.migrate_settings().await?;
         self.bootstrap_admin_if_none().await?;
 
         Ok(())
@@ -880,6 +881,72 @@ impl Database {
         .execute(&mut *conn)
         .await?;
 
+        Ok(())
+    }
+
+    // ─── 系统设置 ─────────────────────────────────────────────────────────────────
+
+    pub async fn migrate_settings(&self) -> ResultType<()> {
+        let mut conn = self.pool.get().await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS system_settings (
+                key   TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+            )",
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        for (k, v) in [
+            ("smtp_enabled", "false"),
+            ("smtp_port", "465"),
+            ("smtp_tls", "true"),
+            ("smtp_host", ""),
+            ("smtp_user", ""),
+            ("smtp_pass", ""),
+            ("smtp_from", ""),
+        ] {
+            sqlx::query(
+                "INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?)",
+            )
+            .bind(k)
+            .bind(v)
+            .execute(&mut *conn)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_all_settings(&self) -> ResultType<std::collections::HashMap<String, String>> {
+        let mut conn = self.pool.get().await?;
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT key, value FROM system_settings")
+                .fetch_all(&mut *conn)
+                .await?;
+        Ok(rows.into_iter().collect())
+    }
+
+    pub async fn get_setting(&self, key: &str) -> ResultType<Option<String>> {
+        let mut conn = self.pool.get().await?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT value FROM system_settings WHERE key = ?")
+                .bind(key)
+                .fetch_optional(&mut *conn)
+                .await?;
+        Ok(row.map(|(v,)| v))
+    }
+
+    pub async fn set_setting(&self, key: &str, value: &str) -> ResultType<()> {
+        let mut conn = self.pool.get().await?;
+        sqlx::query(
+            "INSERT INTO system_settings (key, value) VALUES (?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(key)
+        .bind(value)
+        .execute(&mut *conn)
+        .await?;
         Ok(())
     }
 }
