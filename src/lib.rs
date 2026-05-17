@@ -12,5 +12,6 @@ pub mod password_reset;
 pub mod peer;
 mod version;
 pub mod views;
+pub mod settings_api;
 pub mod subscription;
 pub mod web;

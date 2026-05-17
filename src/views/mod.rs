@@ -87,3 +87,10 @@ pub struct AdminSubscriptionsTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
 }
+
+#[derive(Template)]
+#[template(path = "admin_settings.html")]
+pub struct AdminSettingsTemplate {
+    pub title: String,
+    pub current_user: Option<UserInfo>,
+}

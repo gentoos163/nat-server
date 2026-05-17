@@ -14,9 +14,9 @@ use crate::{
     api::{ApiResponse, ApiState, LoginRequest, RegisterRequest, UserInfo},
     database::{CreateUserRequest, Database},
     views::{
-        AdminSubscriptionsTemplate, DashboardTemplate, DevicesTemplate, ForgotPasswordTemplate,
-        LoginTemplate, MonitorTemplate, RegisterTemplate, ResetPasswordTemplate,
-        SubscriptionTemplate, UsersTemplate,
+        AdminSettingsTemplate, AdminSubscriptionsTemplate, DashboardTemplate, DevicesTemplate,
+        ForgotPasswordTemplate, LoginTemplate, MonitorTemplate, RegisterTemplate,
+        ResetPasswordTemplate, SubscriptionTemplate, UsersTemplate,
     },
 };
 
@@ -154,6 +154,18 @@ pub async fn subscription_page() -> impl IntoResponse {
 pub async fn admin_subscriptions_page() -> impl IntoResponse {
     let template = AdminSubscriptionsTemplate {
         title: "订阅管理".to_string(),
+        current_user: None,
+    };
+    Html(
+        template
+            .render()
+            .unwrap_or_else(|_| "Template error".to_string()),
+    )
+}
+
+pub async fn admin_settings_page() -> impl IntoResponse {
+    let template = AdminSettingsTemplate {
+        title: "系统设置".to_string(),
         current_user: None,
     };
     Html(
@@ -385,6 +397,7 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
         .route("/monitor", get(monitor_page))
         .route("/subscription", get(subscription_page))
         .route("/admin/subscriptions", get(admin_subscriptions_page))
+        .route("/admin/settings", get(admin_settings_page))
         // API路由
         .route("/api/login", post(login))
         .route("/api/register", post(register))
@@ -432,6 +445,31 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
             put(crate::api::admin_update_subscription)
                 .delete(crate::api::admin_deactivate_subscription),
         )
+        // 系统设置 API
+        .route(
+            "/api/admin/settings",
+            get(crate::settings_api::get_settings).put(crate::settings_api::update_settings),
+        )
+        // 黑名单 API
+        .route(
+            "/api/admin/blacklist",
+            get(crate::settings_api::get_blacklist).post(crate::settings_api::add_blacklist),
+        )
+        .route(
+            "/api/admin/blacklist/:ip",
+            delete(crate::settings_api::delete_blacklist),
+        )
+        // 阻止名单 API
+        .route(
+            "/api/admin/blocklist",
+            get(crate::settings_api::get_blocklist).post(crate::settings_api::add_blocklist),
+        )
+        .route(
+            "/api/admin/blocklist/:ip",
+            delete(crate::settings_api::delete_blocklist),
+        )
+        // 系统信息 API
+        .route("/api/admin/sysinfo", get(crate::settings_api::get_sysinfo))
         .layer(axum::middleware::from_fn(cors_middleware))
         .layer(axum::Extension(state))
 }
