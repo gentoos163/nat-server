@@ -1,14 +1,14 @@
 {% extends "layout.html" %}
-{% block title %}我的订阅 - {% endblock %}
+{% block title %}{{ t.subscription_title }} - {% endblock %}
 
 {% block nav_links %}
-<a href="/dashboard">控制台</a>
-<a href="/devices">设备管理</a>
-<a href="/subscription" class="active">我的订阅</a>
-<a href="/users" class="nav-admin-only" style="display:none">用户管理</a>
-<a href="/admin/subscriptions" class="nav-admin-only" style="display:none">订阅管理</a>
-<a href="/admin/settings" class="nav-admin-only" style="display:none">系统设置</a>
-<a href="/monitor">连接监控</a>
+<a href="/dashboard">{{ t.nav_dashboard }}</a>
+<a href="/devices">{{ t.nav_devices }}</a>
+<a href="/subscription" class="active">{{ t.nav_subscription }}</a>
+<a href="/users" class="nav-admin-only" style="display:none">{{ t.nav_users }}</a>
+<a href="/admin/subscriptions" class="nav-admin-only" style="display:none">{{ t.nav_subscriptions_admin }}</a>
+<a href="/admin/settings" class="nav-admin-only" style="display:none">{{ t.nav_settings }}</a>
+<a href="/monitor">{{ t.nav_monitor }}</a>
 {% endblock %}
 
 {% block extra_css %}
@@ -140,18 +140,27 @@
 {% block content %}
 <!-- 当前套餐卡片 -->
 <div class="plan-hero" id="plan-hero">
-    <div style="text-align:center;color:var(--text3);padding:32px 0">加载中…</div>
+    <div style="text-align:center;color:var(--text3);padding:32px 0">{{ t.label_loading }}</div>
 </div>
 
 <!-- 套餐对比 -->
 <div class="section-heading">套餐对比</div>
 <div class="plans-grid" id="plans-grid">
-    <div style="text-align:center;color:var(--text3);padding:32px 0;grid-column:1/-1">加载中…</div>
+    <div style="text-align:center;color:var(--text3);padding:32px 0;grid-column:1/-1">{{ t.label_loading }}</div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    const _subT = {
+        currentPlan: "{{ t.subscription_current }}",
+        deviceUsage: "{{ t.subscription_device_usage }}",
+        speedLimit: "{{ t.subscription_speed_limit }}",
+        expires: "{{ t.subscription_expires }}",
+        forever: "{{ t.subscription_forever }}",
+        upgrade: "{{ t.subscription_upgrade }}",
+    };
+
     document.addEventListener("DOMContentLoaded", function () {
         const user = checkAuth();
         if (!user) return;
@@ -208,26 +217,26 @@
             const days = Math.ceil((d - Date.now()) / 86400000);
             const cls  = days < 7 ? "danger" : days < 30 ? "warn" : "";
             expiryHtml = `<div class="plan-stat">
-                <label>到期时间</label>
-                <div class="val ${cls}">${d.toLocaleDateString("zh-CN")}${days < 7 ? "（" + days + " 天后）" : ""}</div>
+                <label>${_subT.expires}</label>
+                <div class="val ${cls}">${d.toLocaleDateString()}${days < 7 ? "（" + days + " 天后）" : ""}</div>
             </div>`;
         } else {
-            expiryHtml = `<div class="plan-stat"><label>到期时间</label><div class="val">永久</div></div>`;
+            expiryHtml = `<div class="plan-stat"><label>${_subT.expires}</label><div class="val">${_subT.forever}</div></div>`;
         }
 
         document.getElementById("plan-hero").innerHTML = `
             <div class="plan-hero-header">
                 <span class="plan-tag ${planTagClass(sub.plan_name)}">${escapeHtml(sub.plan_display_name || sub.plan_name)}</span>
-                <span style="font-size:13px;color:var(--text2)">当前套餐</span>
+                <span style="font-size:13px;color:var(--text2)">${_subT.currentPlan}</span>
             </div>
             <div class="plan-stats">
                 <div class="plan-stat">
-                    <label>设备使用</label>
+                    <label>${_subT.deviceUsage}</label>
                     <div class="val ${valClass}">${deviceText}</div>
                     ${limit > 0 ? `<div class="progress-track"><div class="progress-fill ${barClass}" style="width:${pct}%"></div></div>` : ""}
                 </div>
                 <div class="plan-stat">
-                    <label>速度限制</label>
+                    <label>${_subT.speedLimit}</label>
                     <div class="val">${speedText}</div>
                 </div>
                 ${expiryHtml}
@@ -252,8 +261,8 @@
                     : p.speed_limit_kbps + " Kbps")
                 : "不限速";
             const btn = isCurrent
-                ? `<button class="btn btn-secondary btn-sm" disabled style="cursor:default;opacity:0.6">当前套餐</button>`
-                : `<button class="btn btn-primary btn-sm" onclick="contactAdmin('${escapeHtml(p.display_name)}')">联系管理员升级</button>`;
+                ? `<button class="btn btn-secondary btn-sm" disabled style="cursor:default;opacity:0.6">${_subT.currentPlan}</button>`
+                : `<button class="btn btn-primary btn-sm" onclick="contactAdmin('${escapeHtml(p.display_name)}')">${_subT.upgrade}</button>`;
             return `<div class="plan-card${isCurrent ? " current" : ""}">
                 <div class="plan-card-name">${escapeHtml(p.display_name)}</div>
                 <div class="plan-price">${priceHtml}</div>

@@ -21,6 +21,7 @@
 //! ```
 
 use crate::config::ClientConfig;
+use crate::i18n;
 use crate::ui::tray::{TrayAction, TrayManager};
 use core_common::log;
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -42,6 +43,10 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
 
     // 初始化配置显示值
     init_config_fields(&window);
+
+    // 应用当前语言翻译
+    let lang = ClientConfig::get_language();
+    apply_translations(&window, &lang);
 
     // ── 系统托盘 ─────────────────────────────────────────────────────────────
     let tray = match TrayManager::new() {
@@ -125,6 +130,87 @@ fn init_config_fields(w: &AppWindow) {
     w.set_cfg_api_url(cfg.api_url.as_str().into());
     w.set_cfg_ipc_port(cfg.ipc_port.to_string().as_str().into());
     w.set_peer_id(ClientConfig::get_id().as_str().into());
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 多语言翻译应用：将翻译字符串推送到 Slint Tr global
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn apply_translations(w: &AppWindow, lang: &str) {
+    let tr = i18n::get(lang);
+    let g = w.global::<Tr>();
+    g.set_nav_dashboard(tr.nav_dashboard.into());
+    g.set_nav_connections(tr.nav_connections.into());
+    g.set_nav_peers(tr.nav_peers.into());
+    g.set_nav_account(tr.nav_account.into());
+    g.set_nav_devices(tr.nav_devices.into());
+    g.set_nav_settings(tr.nav_settings.into());
+    g.set_btn_save(tr.btn_save.into());
+    g.set_btn_cancel(tr.btn_cancel.into());
+    g.set_btn_refresh(tr.btn_refresh.into());
+    g.set_btn_add(tr.btn_add.into());
+    g.set_btn_delete(tr.btn_delete.into());
+    g.set_btn_connect(tr.btn_connect.into());
+    g.set_btn_login(tr.btn_login.into());
+    g.set_btn_logout(tr.btn_logout.into());
+    g.set_btn_register(tr.btn_register.into());
+    g.set_btn_change_password(tr.btn_change_password.into());
+    g.set_status_online(tr.status_online.into());
+    g.set_status_offline(tr.status_offline.into());
+    g.set_status_loading(tr.status_loading.into());
+    g.set_status_processing(tr.status_processing.into());
+    g.set_dashboard_title(tr.dashboard_title.into());
+    g.set_dashboard_peer_id(tr.dashboard_peer_id.into());
+    g.set_dashboard_server(tr.dashboard_server.into());
+    g.set_dashboard_nat_type(tr.dashboard_nat_type.into());
+    g.set_dashboard_online(tr.dashboard_online.into());
+    g.set_dashboard_offline(tr.dashboard_offline.into());
+    g.set_conn_title(tr.conn_title.into());
+    g.set_conn_peer_id(tr.conn_peer_id.into());
+    g.set_conn_local_port(tr.conn_local_port.into());
+    g.set_conn_type(tr.conn_type.into());
+    g.set_conn_sent(tr.conn_sent.into());
+    g.set_conn_recv(tr.conn_recv.into());
+    g.set_conn_close(tr.conn_close.into());
+    g.set_conn_no_connections(tr.conn_no_connections.into());
+    g.set_conn_input_peer_id(tr.conn_input_peer_id.into());
+    g.set_conn_input_port(tr.conn_input_port.into());
+    g.set_peers_title(tr.peers_title.into());
+    g.set_peers_scanning(tr.peers_scanning.into());
+    g.set_peers_discover(tr.peers_discover.into());
+    g.set_peers_no_peers(tr.peers_no_peers.into());
+    g.set_peers_connect(tr.peers_connect.into());
+    g.set_account_title(tr.account_title.into());
+    g.set_account_username(tr.account_username.into());
+    g.set_account_password(tr.account_password.into());
+    g.set_account_email(tr.account_email.into());
+    g.set_account_device_name(tr.account_device_name.into());
+    g.set_account_old_password(tr.account_old_password.into());
+    g.set_account_new_password(tr.account_new_password.into());
+    g.set_account_change_password(tr.account_change_password.into());
+    g.set_account_token_remaining(tr.account_token_remaining.into());
+    g.set_account_register_link(tr.account_register_link.into());
+    g.set_account_login_link(tr.account_login_link.into());
+    g.set_account_sub_plan(tr.account_sub_plan.into());
+    g.set_account_sub_current(tr.account_sub_current.into());
+    g.set_account_sub_device_usage(tr.account_sub_device_usage.into());
+    g.set_account_sub_expires(tr.account_sub_expires.into());
+    g.set_account_sub_forever(tr.account_sub_forever.into());
+    g.set_devices_title(tr.devices_title.into());
+    g.set_devices_id(tr.devices_id.into());
+    g.set_devices_name(tr.devices_name.into());
+    g.set_devices_remove(tr.devices_remove.into());
+    g.set_devices_no_devices(tr.devices_no_devices.into());
+    g.set_settings_title(tr.settings_title.into());
+    g.set_settings_server(tr.settings_server.into());
+    g.set_settings_relay(tr.settings_relay.into());
+    g.set_settings_peer_id(tr.settings_peer_id.into());
+    g.set_settings_protocol(tr.settings_protocol.into());
+    g.set_settings_language(tr.settings_language.into());
+    g.set_settings_open_config(tr.settings_open_config.into());
+    g.set_settings_save(tr.settings_save.into());
+    g.set_lang_zh(tr.lang_zh.into());
+    g.set_lang_en(tr.lang_en.into());
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -560,6 +646,18 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                 let cur = w.get_show_register();
                 w.set_show_register(!cur);
                 w.set_account_status("".into());
+            }
+        });
+    }
+
+    // ── 切换语言 ─────────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_set_language(move |lang| {
+            let lang_str = lang.to_string();
+            ClientConfig::set_language(&lang_str);
+            if let Some(w) = win.upgrade() {
+                apply_translations(&w, &lang_str);
             }
         });
     }

@@ -15,6 +15,8 @@ pub struct UserInfo {
 pub struct LayoutTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -22,6 +24,8 @@ pub struct LayoutTemplate {
 pub struct LoginTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -29,6 +33,8 @@ pub struct LoginTemplate {
 pub struct RegisterTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -36,6 +42,8 @@ pub struct RegisterTemplate {
 pub struct ForgotPasswordTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -44,6 +52,8 @@ pub struct ResetPasswordTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
     pub token: String,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -51,6 +61,8 @@ pub struct ResetPasswordTemplate {
 pub struct DashboardTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -58,6 +70,8 @@ pub struct DashboardTemplate {
 pub struct DevicesTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -65,6 +79,8 @@ pub struct DevicesTemplate {
 pub struct UsersTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -72,6 +88,8 @@ pub struct UsersTemplate {
 pub struct MonitorTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -79,6 +97,8 @@ pub struct MonitorTemplate {
 pub struct SubscriptionTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -86,6 +106,8 @@ pub struct SubscriptionTemplate {
 pub struct AdminSubscriptionsTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }
 
 #[derive(Template)]
@@ -93,4 +115,6 @@ pub struct AdminSubscriptionsTemplate {
 pub struct AdminSettingsTemplate {
     pub title: String,
     pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
 }

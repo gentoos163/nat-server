@@ -21,6 +21,7 @@
 
 mod auth;
 mod config;
+mod i18n;
 mod ipc;
 mod lan;
 mod port_forward;

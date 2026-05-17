@@ -1,14 +1,14 @@
 {% extends "layout.html" %}
-{% block title %}系统设置 - {% endblock %}
+{% block title %}{{ t.settings_title }} - {% endblock %}
 
 {% block nav_links %}
-<a href="/dashboard">控制台</a>
-<a href="/devices">设备管理</a>
-<a href="/subscription">我的订阅</a>
-<a href="/users" class="nav-admin-only" style="display:none">用户管理</a>
-<a href="/admin/subscriptions" class="nav-admin-only" style="display:none">订阅管理</a>
-<a href="/admin/settings" class="active nav-admin-only" style="display:none">系统设置</a>
-<a href="/monitor">连接监控</a>
+<a href="/dashboard">{{ t.nav_dashboard }}</a>
+<a href="/devices">{{ t.nav_devices }}</a>
+<a href="/subscription">{{ t.nav_subscription }}</a>
+<a href="/users" class="nav-admin-only" style="display:none">{{ t.nav_users }}</a>
+<a href="/admin/subscriptions" class="nav-admin-only" style="display:none">{{ t.nav_subscriptions_admin }}</a>
+<a href="/admin/settings" class="active nav-admin-only" style="display:none">{{ t.nav_settings }}</a>
+<a href="/monitor">{{ t.nav_monitor }}</a>
 {% endblock %}
 
 {% block extra_css %}
@@ -229,39 +229,39 @@
 
 {% block content %}
 <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('smtp', this)">邮件设置</button>
-    <button class="tab-btn" onclick="switchTab('ip', this)">黑名单管理</button>
-    <button class="tab-btn" onclick="switchTab('sysinfo', this)">系统信息</button>
-    <button class="tab-btn" onclick="switchTab('serverconf', this)">服务器配置</button>
+    <button class="tab-btn active" onclick="switchTab('smtp', this)">{{ t.settings_smtp }}</button>
+    <button class="tab-btn" onclick="switchTab('ip', this)">{{ t.settings_blacklist }}</button>
+    <button class="tab-btn" onclick="switchTab('sysinfo', this)">{{ t.settings_sysinfo }}</button>
+    <button class="tab-btn" onclick="switchTab('serverconf', this)">{{ t.settings_server_config }}</button>
 </div>
 
 <!-- ── Tab: 邮件设置 ─────────────────────────────────────────────────────── -->
 <div id="tab-smtp" class="tab-panel active">
     <div class="form-section">
-        <h3>SMTP 邮件配置</h3>
+        <h3>SMTP {{ t.settings_smtp }}</h3>
         <div class="form-row">
             <div class="form-group">
-                <label>SMTP 主机</label>
+                <label>{{ t.settings_smtp_host }}</label>
                 <input type="text" id="smtp_host" placeholder="smtp.qq.com" />
             </div>
             <div class="form-group">
-                <label>SMTP 端口</label>
+                <label>{{ t.settings_smtp_port }}</label>
                 <input type="number" id="smtp_port" placeholder="465" />
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label>用户名</label>
+                <label>{{ t.settings_smtp_user }}</label>
                 <input type="text" id="smtp_user" placeholder="user@example.com" />
             </div>
             <div class="form-group">
-                <label>密码</label>
+                <label>{{ t.settings_smtp_pass }}</label>
                 <input type="password" id="smtp_pass" placeholder="SMTP 授权码" />
             </div>
         </div>
         <div class="form-row">
             <div class="form-group">
-                <label>发件人地址</label>
+                <label>{{ t.settings_smtp_from }}</label>
                 <input type="text" id="smtp_from" placeholder="noreply@example.com" />
             </div>
             <div class="form-group">
@@ -271,18 +271,18 @@
                         <input type="checkbox" id="smtp_tls" />
                         <span class="toggle-slider"></span>
                     </label>
-                    <span style="font-size:13px;color:var(--text2)">启用 TLS</span>
+                    <span style="font-size:13px;color:var(--text2)">{{ t.settings_smtp_tls }}</span>
                     <span style="margin-left:16px"></span>
                     <label class="toggle">
                         <input type="checkbox" id="smtp_enabled" />
                         <span class="toggle-slider"></span>
                     </label>
-                    <span style="font-size:13px;color:var(--text2)">启用邮件服务</span>
+                    <span style="font-size:13px;color:var(--text2)">{{ t.settings_smtp_enabled }}</span>
                 </div>
             </div>
         </div>
         <div class="form-actions">
-            <button class="btn btn-primary" onclick="saveSmtp()">保存设置</button>
+            <button class="btn btn-primary" onclick="saveSmtp()">{{ t.btn_save }}</button>
             <button class="btn btn-secondary" onclick="testSmtp()">测试发送</button>
         </div>
     </div>
@@ -291,26 +291,26 @@
 <!-- ── Tab: 黑名单管理 ─────────────────────────────────────────────────────── -->
 <div id="tab-ip" class="tab-panel">
     <div class="sub-tabs">
-        <button class="sub-tab-btn active" onclick="switchSubTab('blacklist', this)">黑名单</button>
-        <button class="sub-tab-btn" onclick="switchSubTab('blocklist', this)">阻止名单</button>
+        <button class="sub-tab-btn active" onclick="switchSubTab('blacklist', this)">{{ t.settings_blacklist }}</button>
+        <button class="sub-tab-btn" onclick="switchSubTab('blocklist', this)">{{ t.settings_blocklist }}</button>
     </div>
 
     <!-- 黑名单 -->
     <div id="subtab-blacklist" class="sub-tab-panel active">
         <div class="ip-section">
-            <h3>IP 黑名单</h3>
+            <h3>IP {{ t.settings_blacklist }}</h3>
             <div class="ip-add-row">
-                <input type="text" class="ip-input" id="bl-ip" placeholder="IP 地址" />
-                <input type="text" class="comment-input" id="bl-comment" placeholder="备注（可选）" />
-                <button class="btn btn-primary" onclick="addIp('blacklist')">添加</button>
+                <input type="text" class="ip-input" id="bl-ip" placeholder="{{ t.settings_ip }}" />
+                <input type="text" class="comment-input" id="bl-comment" placeholder="{{ t.settings_comment }}（可选）" />
+                <button class="btn btn-primary" onclick="addIp('blacklist')">{{ t.btn_add }}</button>
             </div>
             <div class="table-wrap">
                 <table>
                     <thead>
-                        <tr><th>IP 地址</th><th>备注</th><th>操作</th></tr>
+                        <tr><th>{{ t.settings_ip }}</th><th>{{ t.settings_comment }}</th><th>{{ t.label_actions }}</th></tr>
                     </thead>
                     <tbody id="blacklist-body">
-                        <tr><td colspan="3"><div class="empty-state"><p>正在加载…</p></div></td></tr>
+                        <tr><td colspan="3"><div class="empty-state"><p>{{ t.label_loading }}</p></div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -320,19 +320,19 @@
     <!-- 阻止名单 -->
     <div id="subtab-blocklist" class="sub-tab-panel">
         <div class="ip-section">
-            <h3>IP 阻止名单</h3>
+            <h3>IP {{ t.settings_blocklist }}</h3>
             <div class="ip-add-row">
-                <input type="text" class="ip-input" id="bl2-ip" placeholder="IP 地址" />
-                <input type="text" class="comment-input" id="bl2-comment" placeholder="备注（可选）" />
-                <button class="btn btn-primary" onclick="addIp('blocklist')">添加</button>
+                <input type="text" class="ip-input" id="bl2-ip" placeholder="{{ t.settings_ip }}" />
+                <input type="text" class="comment-input" id="bl2-comment" placeholder="{{ t.settings_comment }}（可选）" />
+                <button class="btn btn-primary" onclick="addIp('blocklist')">{{ t.btn_add }}</button>
             </div>
             <div class="table-wrap">
                 <table>
                     <thead>
-                        <tr><th>IP 地址</th><th>备注</th><th>操作</th></tr>
+                        <tr><th>{{ t.settings_ip }}</th><th>{{ t.settings_comment }}</th><th>{{ t.label_actions }}</th></tr>
                     </thead>
                     <tbody id="blocklist-body">
-                        <tr><td colspan="3"><div class="empty-state"><p>正在加载…</p></div></td></tr>
+                        <tr><td colspan="3"><div class="empty-state"><p>{{ t.label_loading }}</p></div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -344,23 +344,23 @@
 <div id="tab-sysinfo" class="tab-panel">
     <div class="sysinfo-grid">
         <div class="sysinfo-card">
-            <div class="label">版本</div>
+            <div class="label">{{ t.settings_version }}</div>
             <div class="value" id="si-version">-</div>
         </div>
         <div class="sysinfo-card">
-            <div class="label">运行时长</div>
+            <div class="label">{{ t.settings_uptime }}</div>
             <div class="value" id="si-uptime">-</div>
         </div>
         <div class="sysinfo-card">
-            <div class="label">操作系统</div>
+            <div class="label">{{ t.settings_os }}</div>
             <div class="value" id="si-os">-</div>
         </div>
         <div class="sysinfo-card">
-            <div class="label">架构</div>
+            <div class="label">{{ t.settings_arch }}</div>
             <div class="value" id="si-arch">-</div>
         </div>
         <div class="sysinfo-card" style="grid-column:1/-1">
-            <div class="label">数据库路径</div>
+            <div class="label">{{ t.settings_db_path }}</div>
             <div class="value" id="si-db" style="font-size:14px;font-weight:400;font-family:monospace">-</div>
         </div>
     </div>
@@ -369,9 +369,9 @@
 <!-- ── Tab: 服务器配置 ─────────────────────────────────────────────────────── -->
 <div id="tab-serverconf" class="tab-panel">
     <div class="form-section">
-        <h3>服务器配置（只读）</h3>
+        <h3>{{ t.settings_server_config }}（只读）</h3>
         <div class="notice">配置文件内容需通过 config.toml 修改，修改后需重启服务才能生效。</div>
-        <div class="config-pre" id="config-content" style="margin-top:16px">正在加载…</div>
+        <div class="config-pre" id="config-content" style="margin-top:16px">{{ t.label_loading }}</div>
     </div>
 </div>
 {% endblock %}
@@ -499,7 +499,7 @@
             return '<tr>' +
                 '<td style="font-family:monospace">' + ip + '</td>' +
                 '<td style="color:var(--text2)">' + comment + '</td>' +
-                '<td><button class="btn btn-xs btn-danger" onclick="deleteIp(\'' + type + '\',\'' + ip + '\')">删除</button></td>' +
+                '<td><button class="btn btn-xs btn-danger" onclick="deleteIp(\'' + type + '\',\'' + ip + '\')">{{ t.btn_delete }}</button></td>' +
                 '</tr>';
         }).join("");
     }
@@ -572,7 +572,6 @@
     // ── 服务器配置 ────────────────────────────────────────────────────────────
     function loadServerConfig() {
         const el = document.getElementById("config-content");
-        // 尝试读取 config.toml（若服务未暴露该接口则显示提示）
         fetch("/config.toml")
             .then(function (r) {
                 if (!r.ok) throw new Error("not found");

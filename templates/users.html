@@ -1,12 +1,12 @@
-{% extends "layout.html" %} {% block title %}用户管理 - {% endblock %} {% block
+{% extends "layout.html" %} {% block title %}{{ t.users_title }} - {% endblock %} {% block
 nav_links %}
-<a href="/dashboard">控制台</a>
-<a href="/devices">设备管理</a>
-<a href="/subscription">我的订阅</a>
-<a href="/users" class="active nav-admin-only" style="display: none">用户管理</a>
-<a href="/admin/subscriptions" class="nav-admin-only" style="display: none">订阅管理</a>
-<a href="/admin/settings" class="nav-admin-only" style="display: none">系统设置</a>
-<a href="/monitor">连接监控</a>
+<a href="/dashboard">{{ t.nav_dashboard }}</a>
+<a href="/devices">{{ t.nav_devices }}</a>
+<a href="/subscription">{{ t.nav_subscription }}</a>
+<a href="/users" class="active nav-admin-only" style="display: none">{{ t.nav_users }}</a>
+<a href="/admin/subscriptions" class="nav-admin-only" style="display: none">{{ t.nav_subscriptions_admin }}</a>
+<a href="/admin/settings" class="nav-admin-only" style="display: none">{{ t.nav_settings }}</a>
+<a href="/monitor">{{ t.nav_monitor }}</a>
 {% endblock %} {% block extra_css %}
 <style>
     /* 角色切换下拉框 */
@@ -46,14 +46,14 @@ nav_links %}
     </div>
     <div class="toolbar-right">
         <button type="button" class="btn btn-secondary" onclick="loadUsers()">
-            刷新
+            {{ t.btn_refresh }}
         </button>
         <button
             type="button"
             class="btn btn-primary"
             onclick="showCreateModal()"
         >
-            + 创建用户
+            {{ t.users_create }}
         </button>
     </div>
 </div>
@@ -63,18 +63,18 @@ nav_links %}
     <table>
         <thead>
             <tr>
-                <th>用户名</th>
-                <th>邮箱</th>
-                <th>角色</th>
-                <th>状态</th>
-                <th>注册时间</th>
-                <th>操作</th>
+                <th>{{ t.users_username }}</th>
+                <th>{{ t.users_email }}</th>
+                <th>{{ t.users_role }}</th>
+                <th>{{ t.label_status }}</th>
+                <th>{{ t.label_created_at }}</th>
+                <th>{{ t.label_actions }}</th>
             </tr>
         </thead>
         <tbody id="users-tbody">
             <tr>
                 <td colspan="6" style="text-align: center; color: var(--text2)">
-                    加载中…
+                    {{ t.label_loading }}
                 </td>
             </tr>
         </tbody>
@@ -84,10 +84,10 @@ nav_links %}
 <!-- 创建用户模态框 -->
 <div class="modal-overlay" id="create-user-modal">
     <div class="modal-box">
-        <div class="modal-title">创建用户</div>
+        <div class="modal-title">{{ t.users_create }}</div>
         <form id="create-user-form">
             <div class="form-group">
-                <label for="cu-username">用户名</label>
+                <label for="cu-username">{{ t.users_username }}</label>
                 <input
                     type="text"
                     id="cu-username"
@@ -98,7 +98,7 @@ nav_links %}
                 />
             </div>
             <div class="form-group">
-                <label for="cu-email">邮箱</label>
+                <label for="cu-email">{{ t.users_email }}</label>
                 <input
                     type="email"
                     id="cu-email"
@@ -108,7 +108,7 @@ nav_links %}
                 />
             </div>
             <div class="form-group">
-                <label for="cu-password">密码</label>
+                <label for="cu-password">{{ t.login_password }}</label>
                 <input
                     type="password"
                     id="cu-password"
@@ -119,7 +119,7 @@ nav_links %}
                 />
             </div>
             <div class="form-group">
-                <label for="cu-password2">确认密码</label>
+                <label for="cu-password2">{{ t.register_confirm_password }}</label>
                 <input
                     type="password"
                     id="cu-password2"
@@ -135,9 +135,9 @@ nav_links %}
                     class="btn btn-secondary"
                     onclick="hideCreateModal()"
                 >
-                    取消
+                    {{ t.btn_cancel }}
                 </button>
-                <button type="submit" class="btn btn-primary">创建</button>
+                <button type="submit" class="btn btn-primary">{{ t.btn_add }}</button>
             </div>
         </form>
     </div>
@@ -146,21 +146,21 @@ nav_links %}
 <!-- 编辑用户模态框 -->
 <div class="modal-overlay" id="edit-user-modal">
     <div class="modal-box">
-        <div class="modal-title">编辑用户</div>
+        <div class="modal-title">{{ t.btn_edit }}</div>
         <form id="edit-user-form">
             <input type="hidden" id="eu-id" />
             <div class="form-group">
-                <label for="eu-username">用户名</label>
+                <label for="eu-username">{{ t.users_username }}</label>
                 <input
                     type="text"
                     id="eu-username"
                     required
                     autocomplete="username"
-                    placeholder="用户名"
+                    placeholder="{{ t.users_username }}"
                 />
             </div>
             <div class="form-group">
-                <label for="eu-email">邮箱</label>
+                <label for="eu-email">{{ t.users_email }}</label>
                 <input
                     type="email"
                     id="eu-email"
@@ -175,9 +175,9 @@ nav_links %}
                     class="btn btn-secondary"
                     onclick="hideEditModal()"
                 >
-                    取消
+                    {{ t.btn_cancel }}
                 </button>
-                <button type="submit" class="btn btn-primary">保存</button>
+                <button type="submit" class="btn btn-primary">{{ t.btn_save }}</button>
             </div>
         </form>
     </div>
@@ -339,8 +339,8 @@ nav_links %}
                 formatTime(u.created_at) +
                 "</td>" +
                 '<td class="row-actions">' +
-                '<button type="button" class="btn btn-xs btn-secondary" data-action="edit">编辑</button>' +
-                '<button type="button" class="btn btn-xs btn-danger" data-action="del">删除</button>' +
+                '<button type="button" class="btn btn-xs btn-secondary" data-action="edit">{{ t.btn_edit }}</button>' +
+                '<button type="button" class="btn btn-xs btn-danger" data-action="del">{{ t.btn_delete }}</button>' +
                 "</td></tr>";
         });
         tbody.innerHTML = html;

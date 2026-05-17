@@ -1,7 +1,7 @@
-{% extends "layout.html" %} {% block title %}用户登录 - {% endblock %} {% block
+{% extends "layout.html" %} {% block title %}{{ t.login_title }} - {% endblock %} {% block
 nav_links %}
-<a href="/login" class="active">登录</a>
-<a href="/register">注册</a>
+<a href="/login" class="active">{{ t.nav_login }}</a>
+<a href="/register">{{ t.nav_register }}</a>
 {% endblock %} {% block extra_css %}
 <style>
     /* 让 auth 页撑满视口，覆盖 .page 默认内边距 */
@@ -77,12 +77,12 @@ nav_links %}
 <div class="auth-wrap">
     <div class="auth-card">
         <span class="auth-icon">🔐</span>
-        <h1 class="auth-title">欢迎回来</h1>
-        <p class="auth-sub">登录 NAT Server 管理控制台</p>
+        <h1 class="auth-title">{{ t.login_title }}</h1>
+        <p class="auth-sub">{{ t.login_title }} NAT Server</p>
 
         <form id="login-form">
             <div class="form-group">
-                <label for="username">用户名</label>
+                <label for="username">{{ t.login_username }}</label>
                 <input
                     type="text"
                     id="username"
@@ -93,7 +93,7 @@ nav_links %}
             </div>
 
             <div class="form-group">
-                <label for="password">密码</label>
+                <label for="password">{{ t.login_password }}</label>
                 <input
                     type="password"
                     id="password"
@@ -104,7 +104,7 @@ nav_links %}
             </div>
 
             <div class="form-group">
-                <label for="device_id">设备 ID（可选）</label>
+                <label for="device_id">{{ t.dashboard_peer_id }}（可选）</label>
                 <input
                     type="text"
                     id="device_id"
@@ -119,12 +119,12 @@ nav_links %}
                 </p>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-full">登录</button>
+            <button type="submit" class="btn btn-primary btn-full">{{ t.login_btn }}</button>
         </form>
 
         <div class="auth-links">
-            <a href="/register">还没有账户？立即注册</a>
-            <a href="/forgot-password">忘记密码？</a>
+            <a href="/register">{{ t.login_no_account }}</a>
+            <a href="/forgot-password">{{ t.forgot_password }}</a>
         </div>
     </div>
 </div>

@@ -8,6 +8,7 @@ pub mod common;
 pub mod database;
 pub mod database_simple;
 pub mod device_api;
+pub mod i18n;
 pub mod password_reset;
 pub mod peer;
 mod version;

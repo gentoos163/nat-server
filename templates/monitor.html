@@ -1,12 +1,12 @@
-{% extends "layout.html" %} {% block title %}连接监控 - {% endblock %} {% block
+{% extends "layout.html" %} {% block title %}{{ t.monitor_title }} - {% endblock %} {% block
 nav_links %}
-<a href="/dashboard">控制台</a>
-<a href="/devices">设备管理</a>
-<a href="/subscription">我的订阅</a>
-<a href="/users" class="nav-admin-only" style="display: none">用户管理</a>
-<a href="/admin/subscriptions" class="nav-admin-only" style="display: none">订阅管理</a>
-<a href="/admin/settings" class="nav-admin-only" style="display: none">系统设置</a>
-<a href="/monitor" class="active">连接监控</a>
+<a href="/dashboard">{{ t.nav_dashboard }}</a>
+<a href="/devices">{{ t.nav_devices }}</a>
+<a href="/subscription">{{ t.nav_subscription }}</a>
+<a href="/users" class="nav-admin-only" style="display: none">{{ t.nav_users }}</a>
+<a href="/admin/subscriptions" class="nav-admin-only" style="display: none">{{ t.nav_subscriptions_admin }}</a>
+<a href="/admin/settings" class="nav-admin-only" style="display: none">{{ t.nav_settings }}</a>
+<a href="/monitor" class="active">{{ t.nav_monitor }}</a>
 {% endblock %} {% block extra_css %}
 <style>
     /* 页面标题区 */
@@ -69,12 +69,12 @@ nav_links %}
 <!-- 页面标题区 -->
 <div class="page-header">
     <div class="page-header-left">
-        <h1>连接监控</h1>
+        <h1>{{ t.monitor_title }}</h1>
         <p>实时查看在线 Peer 与连接状态，每 10 秒自动刷新</p>
     </div>
     <div class="page-header-right">
         <span class="refresh-hint" id="last-refresh">—</span>
-        <button class="btn btn-secondary" onclick="loadData()">立即刷新</button>
+        <button class="btn btn-secondary" onclick="loadData()">{{ t.btn_refresh }}</button>
     </div>
 </div>
 
@@ -82,15 +82,15 @@ nav_links %}
 <div class="stats-row">
     <div class="stat-card">
         <div class="stat-num" id="stat-online">—</div>
-        <div class="stat-label">在线连接</div>
+        <div class="stat-label">{{ t.monitor_online_connections }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-num" id="stat-peers">—</div>
-        <div class="stat-label">Peer 总数</div>
+        <div class="stat-label">{{ t.monitor_total_peers }}</div>
     </div>
     <div class="stat-card">
         <div class="stat-num" id="stat-users">—</div>
-        <div class="stat-label">用户总数</div>
+        <div class="stat-label">{{ t.monitor_total_users }}</div>
     </div>
 </div>
 
@@ -100,7 +100,7 @@ nav_links %}
         <thead>
             <tr>
                 <th>Peer ID</th>
-                <th>IP 地址</th>
+                <th>{{ t.settings_ip }}</th>
                 <th>绑定用户</th>
                 <th>首次连接</th>
                 <th>最后活跃</th>
@@ -111,7 +111,7 @@ nav_links %}
                 <td colspan="5">
                     <div class="empty-state">
                         <div class="empty-icon">📡</div>
-                        <p>正在加载连接数据…</p>
+                        <p>{{ t.label_loading }}</p>
                     </div>
                 </td>
             </tr>

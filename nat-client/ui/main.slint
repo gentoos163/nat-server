@@ -8,6 +8,93 @@
 import { Button, LineEdit, ScrollView, Spinner } from "std-widgets.slint";
 
 // ─────────────────────────────────────────────────────────────
+// 翻译 global（由 Rust 根据当前语言设置所有属性）
+// ─────────────────────────────────────────────────────────────
+
+export global Tr {
+    in property <string> nav_dashboard: "首页";
+    in property <string> nav_connections: "连接";
+    in property <string> nav_peers: "局域网";
+    in property <string> nav_account: "账户";
+    in property <string> nav_devices: "设备";
+    in property <string> nav_settings: "设置";
+
+    in property <string> btn_save: "保存";
+    in property <string> btn_cancel: "取消";
+    in property <string> btn_refresh: "刷新";
+    in property <string> btn_add: "新增";
+    in property <string> btn_delete: "删除";
+    in property <string> btn_connect: "连接";
+    in property <string> btn_login: "登录";
+    in property <string> btn_logout: "退出登录";
+    in property <string> btn_register: "注册";
+    in property <string> btn_change_password: "确认修改";
+
+    in property <string> status_online: "在线";
+    in property <string> status_offline: "离线";
+    in property <string> status_loading: "加载中…";
+    in property <string> status_processing: "处理中…";
+
+    in property <string> dashboard_title: "首页";
+    in property <string> dashboard_peer_id: "设备 ID";
+    in property <string> dashboard_server: "服务器";
+    in property <string> dashboard_nat_type: "NAT 类型";
+    in property <string> dashboard_online: "在线";
+    in property <string> dashboard_offline: "离线";
+
+    in property <string> conn_title: "连接";
+    in property <string> conn_peer_id: "Peer ID";
+    in property <string> conn_local_port: "本地端口";
+    in property <string> conn_type: "类型";
+    in property <string> conn_sent: "发送";
+    in property <string> conn_recv: "接收";
+    in property <string> conn_close: "断开";
+    in property <string> conn_no_connections: "暂无活跃连接";
+    in property <string> conn_input_peer_id: "目标 Peer ID";
+    in property <string> conn_input_port: "本地端口（0=自动）";
+
+    in property <string> peers_title: "局域网";
+    in property <string> peers_scanning: "扫描中…";
+    in property <string> peers_discover: "扫描";
+    in property <string> peers_no_peers: "未发现局域网节点";
+    in property <string> peers_connect: "连接";
+
+    in property <string> account_title: "账户";
+    in property <string> account_username: "用户名";
+    in property <string> account_password: "密码";
+    in property <string> account_email: "邮箱";
+    in property <string> account_device_name: "设备名称（可选）";
+    in property <string> account_old_password: "旧密码";
+    in property <string> account_new_password: "新密码";
+    in property <string> account_change_password: "修改密码";
+    in property <string> account_token_remaining: "Token 剩余：";
+    in property <string> account_register_link: "注册账户 →";
+    in property <string> account_login_link: "← 返回登录";
+    in property <string> account_sub_plan: "我的套餐";
+    in property <string> account_sub_current: "当前套餐";
+    in property <string> account_sub_device_usage: "设备使用";
+    in property <string> account_sub_expires: "到期时间";
+    in property <string> account_sub_forever: "永久";
+
+    in property <string> devices_title: "设备";
+    in property <string> devices_id: "设备 ID";
+    in property <string> devices_name: "名称";
+    in property <string> devices_remove: "移除";
+    in property <string> devices_no_devices: "暂无绑定设备";
+
+    in property <string> settings_title: "设置";
+    in property <string> settings_server: "服务器地址";
+    in property <string> settings_relay: "中继服务器";
+    in property <string> settings_peer_id: "设备 ID";
+    in property <string> settings_protocol: "协议";
+    in property <string> settings_language: "界面语言";
+    in property <string> settings_open_config: "打开配置文件";
+    in property <string> settings_save: "保存设置";
+    in property <string> lang_zh: "中文";
+    in property <string> lang_en: "English";
+}
+
+// ─────────────────────────────────────────────────────────────
 // 数据结构
 // ─────────────────────────────────────────────────────────────
 
@@ -255,7 +342,7 @@ component DashboardPage inherits VerticalLayout {
     HorizontalLayout {
         height: 36px;
         Text {
-            text: "控制台";
+            text: Tr.dashboard_title;
             color: Palette.text-bright;
             font-size: 20px;
             font-weight: 700;
@@ -264,7 +351,7 @@ component DashboardPage inherits VerticalLayout {
         }
 
         GhostBtn {
-            text: "刷新";
+            text: Tr.btn_refresh;
             width: 72px;
             clicked => {
                 root.do-refresh();
@@ -288,7 +375,7 @@ component DashboardPage inherits VerticalLayout {
                 spacing: 8px;
                 alignment: start;
                 Label {
-                    text: "连接状态";
+                    text: Tr.dashboard_server;
                 }
 
                 HorizontalLayout {
@@ -299,7 +386,7 @@ component DashboardPage inherits VerticalLayout {
                     }
 
                     Text {
-                        text: root.online ? "已上线" : "离线";
+                        text: root.online ? Tr.dashboard_online : Tr.dashboard_offline;
                         color: root.online ? Palette.success : Palette.error;
                         font-size: 18px;
                         font-weight: 700;
@@ -308,7 +395,7 @@ component DashboardPage inherits VerticalLayout {
                 }
 
                 Label {
-                    text: root.server-addr == "" ? "未配置服务器" : root.server-addr;
+                    text: root.server-addr;
                 }
             }
         }
@@ -320,7 +407,7 @@ component DashboardPage inherits VerticalLayout {
                 spacing: 8px;
                 alignment: start;
                 Label {
-                    text: "我的 Peer ID";
+                    text: Tr.dashboard_peer_id;
                 }
 
                 Text {
@@ -340,7 +427,7 @@ component DashboardPage inherits VerticalLayout {
                 spacing: 8px;
                 alignment: start;
                 Label {
-                    text: "NAT 类型";
+                    text: Tr.dashboard_nat_type;
                 }
 
                 Text {
@@ -365,18 +452,18 @@ component DashboardPage inherits VerticalLayout {
             spacing: 4px;
             alignment: start;
             Label {
-                text: "账户";
+                text: Tr.account_title;
             }
 
             Text {
-                text: root.logged-in ? ("✓  " + root.username + "   [" + root.role + "]") : "未登录（匿名模式）";
+                text: root.logged-in ? ("✓  " + root.username + "   [" + root.role + "]") : Tr.status_offline;
                 color: root.logged-in ? Palette.success : Palette.text-dim;
                 font-size: 14px;
                 font-weight: 600;
             }
 
             if root.logged-in: Label {
-                text: "Token 剩余：" + root.token-remaining;
+                text: Tr.account_token_remaining + root.token-remaining;
             }
         }
     }
@@ -391,7 +478,7 @@ component DashboardPage inherits VerticalLayout {
             padding: 20px;
             spacing: 14px;
             Text {
-                text: "快速连接";
+                text: Tr.conn_title;
                 color: Palette.text-bright;
                 font-size: 16px;
                 font-weight: 600;
@@ -403,17 +490,17 @@ component DashboardPage inherits VerticalLayout {
                 Input {
                     horizontal-stretch: 3;
                     value <=> root.quick-peer-id;
-                    placeholder: "对端 Peer ID（9 位数字）";
+                    placeholder: Tr.conn_input_peer_id;
                 }
 
                 Input {
                     horizontal-stretch: 1;
                     value <=> root.quick-local-port;
-                    placeholder: "本地端口（0=自动）";
+                    placeholder: Tr.conn_input_port;
                 }
 
                 PBtn {
-                    text: root.connecting ? "连接中…" : "连接";
+                    text: root.connecting ? Tr.status_processing : Tr.btn_connect;
                     enabled: !root.connecting && root.quick-peer-id != "";
                     width: 90px;
                     clicked => {
@@ -446,7 +533,7 @@ component ConnectionsPage inherits VerticalLayout {
     padding: 24px;
 
     Text {
-        text: "活跃连接";
+        text: Tr.conn_title;
         color: Palette.text-bright;
         font-size: 20px;
         font-weight: 700;
@@ -461,7 +548,7 @@ component ConnectionsPage inherits VerticalLayout {
     if items.length == 0: Rectangle {
         vertical-stretch: 1;
         Text {
-            text: "暂无活跃连接";
+            text: Tr.conn_no_connections;
             color: Palette.text-dim;
             font-size: 15px;
             horizontal-alignment: center;
@@ -505,7 +592,7 @@ component ConnectionsPage inherits VerticalLayout {
                         }
 
                         GhostBtn {
-                            text: "断开";
+                            text: Tr.conn_close;
                             width: 56px;
                             danger: true;
                             clicked => {
@@ -520,7 +607,7 @@ component ConnectionsPage inherits VerticalLayout {
                         spacing: 20px;
                         VerticalLayout {
                             Label {
-                                text: "本地端口";
+                                text: Tr.conn_local_port;
                             }
 
                             Label {
@@ -530,7 +617,7 @@ component ConnectionsPage inherits VerticalLayout {
 
                         VerticalLayout {
                             Label {
-                                text: "发送";
+                                text: Tr.conn_sent;
                             }
 
                             Label {
@@ -540,7 +627,7 @@ component ConnectionsPage inherits VerticalLayout {
 
                         VerticalLayout {
                             Label {
-                                text: "接收";
+                                text: Tr.conn_recv;
                             }
 
                             Label {
@@ -550,7 +637,7 @@ component ConnectionsPage inherits VerticalLayout {
 
                         VerticalLayout {
                             Label {
-                                text: "时间";
+                                text: Tr.conn_type;
                             }
 
                             Label {
@@ -580,7 +667,7 @@ component PeersPage inherits VerticalLayout {
     HorizontalLayout {
         height: 36px;
         Text {
-            text: "局域网节点";
+            text: Tr.peers_title;
             color: Palette.text-bright;
             font-size: 20px;
             font-weight: 700;
@@ -589,7 +676,7 @@ component PeersPage inherits VerticalLayout {
         }
 
         PBtn {
-            text: root.discovering ? "扫描中…" : "立即扫描";
+            text: root.discovering ? Tr.peers_scanning : Tr.peers_discover;
             enabled: !root.discovering;
             width: 100px;
             clicked => {
@@ -608,14 +695,14 @@ component PeersPage inherits VerticalLayout {
             alignment: center;
             spacing: 12px;
             Text {
-                text: "未发现局域网节点";
+                text: Tr.peers_no_peers;
                 color: Palette.text-dim;
                 font-size: 15px;
                 horizontal-alignment: center;
             }
 
             Text {
-                text: "点击「立即扫描」发送 UDP 广播（约 3 秒）";
+                text: "";
                 color: Palette.text-dim;
                 font-size: 13px;
                 horizontal-alignment: center;
@@ -678,7 +765,7 @@ component PeersPage inherits VerticalLayout {
                     }
 
                     PBtn {
-                        text: "连接";
+                        text: Tr.peers_connect;
                         width: 70px;
                         clicked => {
                             root.connect-peer(item.id);
@@ -724,7 +811,7 @@ component AccountPage inherits VerticalLayout {
     padding: 24px;
 
     Text {
-        text: "账户";
+        text: Tr.account_title;
         color: Palette.text-bright;
         font-size: 20px;
         font-weight: 700;
@@ -789,7 +876,7 @@ component AccountPage inherits VerticalLayout {
                         }
 
                         Label {
-                            text: "Token 剩余：" + root.token-remaining;
+                            text: Tr.account_token_remaining + root.token-remaining;
                             vertical-alignment: center;
                         }
                     }
@@ -800,7 +887,7 @@ component AccountPage inherits VerticalLayout {
                 }
 
                 GhostBtn {
-                    text: "退出登录";
+                    text: Tr.btn_logout;
                     width: 82px;
                     danger: true;
                     clicked => {
@@ -817,7 +904,7 @@ component AccountPage inherits VerticalLayout {
                 spacing: 12px;
                 HorizontalLayout {
                     Text {
-                        text: "我的套餐";
+                        text: Tr.account_sub_plan;
                         color: Palette.text-bright;
                         font-size: 15px;
                         font-weight: 600;
@@ -830,7 +917,7 @@ component AccountPage inherits VerticalLayout {
                         border-radius: 4px;
                         background: #1864ab22;
                         Text {
-                            text: root.sub-plan == "" ? "免费版" : root.sub-plan;
+                            text: root.sub-plan;
                             color: #1864ab;
                             font-size: 12px;
                             font-weight: 700;
@@ -844,7 +931,7 @@ component AccountPage inherits VerticalLayout {
                     VerticalLayout {
                         spacing: 3px;
                         Label {
-                            text: "设备使用";
+                            text: Tr.account_sub_device_usage;
                             font-size: 11px;
                             color: Palette.text-dim;
                         }
@@ -860,12 +947,12 @@ component AccountPage inherits VerticalLayout {
                     VerticalLayout {
                         spacing: 3px;
                         Label {
-                            text: "到期时间";
+                            text: Tr.account_sub_expires;
                             font-size: 11px;
                             color: Palette.text-dim;
                         }
                         Text {
-                            text: root.sub-expires == "" ? "永久" : root.sub-expires;
+                            text: root.sub-expires == "" ? Tr.account_sub_forever : root.sub-expires;
                             color: Palette.text-bright;
                             font-size: 14px;
                             font-weight: 600;
@@ -881,20 +968,20 @@ component AccountPage inherits VerticalLayout {
                 padding: 20px;
                 spacing: 12px;
                 Text {
-                    text: "修改密码";
+                    text: Tr.account_change_password;
                     color: Palette.text-bright;
                     font-size: 15px;
                     font-weight: 600;
                 }
 
                 Input {
-                    placeholder: "旧密码";
+                    placeholder: Tr.account_old_password;
                     password: true;
                     value <=> root.input-old-pass;
                 }
 
                 Input {
-                    placeholder: "新密码";
+                    placeholder: Tr.account_new_password;
                     password: true;
                     value <=> root.input-new-pass;
                 }
@@ -907,7 +994,7 @@ component AccountPage inherits VerticalLayout {
                     }
 
                     PBtn {
-                        text: root.busy ? "处理中…" : "确认修改";
+                        text: root.busy ? Tr.status_processing : Tr.btn_change_password;
                         enabled: !root.busy;
                         width: 100px;
                         clicked => {
@@ -931,7 +1018,7 @@ component AccountPage inherits VerticalLayout {
             spacing: 14px;
             HorizontalLayout {
                 Text {
-                    text: root.show-register ? "注册新账户" : "登录";
+                    text: root.show-register ? Tr.btn_register : Tr.btn_login;
                     color: Palette.text-bright;
                     font-size: 18px;
                     font-weight: 700;
@@ -945,7 +1032,7 @@ component AccountPage inherits VerticalLayout {
                         root.toggle-register();
                     }
                     Text {
-                        text: root.show-register ? "← 返回登录" : "注册账户 →";
+                        text: root.show-register ? Tr.account_login_link : Tr.account_register_link;
                         color: Palette.primary;
                         font-size: 13px;
                         horizontal-alignment: right;
@@ -955,22 +1042,22 @@ component AccountPage inherits VerticalLayout {
             }
 
             Input {
-                placeholder: "用户名";
+                placeholder: Tr.account_username;
                 value <=> root.input-user;
             }
 
             if root.show-register: Input {
-                placeholder: "邮箱";
+                placeholder: Tr.account_email;
                 value <=> root.input-email;
             }
             Input {
-                placeholder: "密码";
+                placeholder: Tr.account_password;
                 password: true;
                 value <=> root.input-pass;
             }
 
             if root.show-register: Input {
-                placeholder: "设备名称（可选）";
+                placeholder: Tr.account_device_name;
                 value <=> root.input-device-name;
             }
             if root.status-msg != "": StatusMsg {
@@ -978,7 +1065,7 @@ component AccountPage inherits VerticalLayout {
                 ok: root.status-ok;
             }
             PBtn {
-                text: root.busy ? "处理中…" : (root.show-register ? "注册" : "登录");
+                text: root.busy ? Tr.status_processing : (root.show-register ? Tr.btn_register : Tr.btn_login);
                 enabled: !root.busy && root.input-user != "" && root.input-pass != "";
                 height: 40px;
                 clicked => {
@@ -1013,7 +1100,7 @@ component DevicesPage inherits VerticalLayout {
     HorizontalLayout {
         height: 36px;
         Text {
-            text: "我的设备";
+            text: Tr.devices_title;
             color: Palette.text-bright;
             font-size: 20px;
             font-weight: 700;
@@ -1022,7 +1109,7 @@ component DevicesPage inherits VerticalLayout {
         }
 
         GhostBtn {
-            text: root.loading ? "加载中…" : "刷新";
+            text: root.loading ? Tr.status_loading : Tr.btn_refresh;
             width: 72px;
             clicked => {
                 root.refresh();
@@ -1037,7 +1124,7 @@ component DevicesPage inherits VerticalLayout {
     if !logged-in: Rectangle {
         vertical-stretch: 1;
         Text {
-            text: "请先登录账户再查看设备列表";
+            text: Tr.account_title;
             color: Palette.text-dim;
             font-size: 15px;
             horizontal-alignment: center;
@@ -1048,7 +1135,7 @@ component DevicesPage inherits VerticalLayout {
     if logged-in && items.length == 0: Rectangle {
         vertical-stretch: 1;
         Text {
-            text: "暂无绑定设备";
+            text: Tr.devices_no_devices;
             color: Palette.text-dim;
             font-size: 15px;
             horizontal-alignment: center;
@@ -1100,7 +1187,7 @@ component DevicesPage inherits VerticalLayout {
                     }
 
                     GhostBtn {
-                        text: "移除";
+                        text: Tr.devices_remove;
                         width: 56px;
                         danger: true;
                         clicked => {
@@ -1128,12 +1215,13 @@ component SettingsPage inherits VerticalLayout {
     callback save();
     callback restart-mediator();
     callback open-config-file();
+    callback set-language(string);
 
     spacing: 0px;
     padding: 24px;
 
     Text {
-        text: "设置";
+        text: Tr.settings_title;
         color: Palette.text-bright;
         font-size: 20px;
         font-weight: 700;
@@ -1150,7 +1238,7 @@ component SettingsPage inherits VerticalLayout {
             padding: 20px;
             spacing: 14px;
             Text {
-                text: "服务器配置";
+                text: Tr.settings_title;
                 color: Palette.text-bright;
                 font-size: 15px;
                 font-weight: 600;
@@ -1159,7 +1247,7 @@ component SettingsPage inherits VerticalLayout {
             VerticalLayout {
                 spacing: 6px;
                 Label {
-                    text: "Rendezvous 服务器（hbbs）";
+                    text: Tr.settings_server;
                 }
 
                 Input {
@@ -1171,7 +1259,7 @@ component SettingsPage inherits VerticalLayout {
             VerticalLayout {
                 spacing: 6px;
                 Label {
-                    text: "中继服务器（hbbr，留空=自动）";
+                    text: Tr.settings_relay;
                 }
 
                 Input {
@@ -1183,7 +1271,7 @@ component SettingsPage inherits VerticalLayout {
             VerticalLayout {
                 spacing: 6px;
                 Label {
-                    text: "API 地址（留空=自动推导）";
+                    text: "API";
                 }
 
                 Input {
@@ -1195,12 +1283,40 @@ component SettingsPage inherits VerticalLayout {
             VerticalLayout {
                 spacing: 6px;
                 Label {
-                    text: "IPC 端口";
+                    text: "IPC";
                 }
 
                 Input {
                     placeholder: "21114";
                     value <=> root.ipc-port-str;
+                }
+            }
+
+            // 语言选择
+            HorizontalLayout {
+                height: 36px;
+                spacing: 10px;
+                alignment: start;
+                Label {
+                    text: Tr.settings_language + ":";
+                    vertical-alignment: center;
+                    width: 90px;
+                }
+
+                PBtn {
+                    text: Tr.lang_zh;
+                    width: 72px;
+                    clicked => {
+                        root.set-language("zh");
+                    }
+                }
+
+                PBtn {
+                    text: Tr.lang_en;
+                    width: 72px;
+                    clicked => {
+                        root.set-language("en");
+                    }
                 }
             }
 
@@ -1212,7 +1328,7 @@ component SettingsPage inherits VerticalLayout {
                 spacing: 10px;
                 height: 36px;
                 PBtn {
-                    text: root.busy ? "保存中…" : "保存配置";
+                    text: root.busy ? Tr.status_processing : Tr.settings_save;
                     enabled: !root.busy;
                     width: 100px;
                     clicked => {
@@ -1221,7 +1337,7 @@ component SettingsPage inherits VerticalLayout {
                 }
 
                 GhostBtn {
-                    text: "重启中介";
+                    text: Tr.settings_server;
                     width: 90px;
                     clicked => {
                         root.restart-mediator();
@@ -1229,7 +1345,7 @@ component SettingsPage inherits VerticalLayout {
                 }
 
                 GhostBtn {
-                    text: "打开配置文件";
+                    text: Tr.settings_open_config;
                     width: 110px;
                     clicked => {
                         root.open-config-file();
@@ -1316,6 +1432,7 @@ export component AppWindow inherits Window {
     callback do-restart-mediator();
     callback do-open-config();
     callback toggle-register();
+    callback set-language(string);
 
     // ── 布局 ──────────────────────────────────────────────────
     HorizontalLayout {
@@ -1376,7 +1493,7 @@ export component AppWindow inherits Window {
 
                 NavItem {
                     icon: "⊞";
-                    label: "首页";
+                    label: Tr.nav_dashboard;
                     selected: page == 0;
                     clicked => {
                         root.page = 0;
@@ -1385,7 +1502,7 @@ export component AppWindow inherits Window {
 
                 NavItem {
                     icon: "⇄";
-                    label: "连接";
+                    label: Tr.nav_connections;
                     selected: page == 1;
                     clicked => {
                         root.page = 1;
@@ -1394,7 +1511,7 @@ export component AppWindow inherits Window {
 
                 NavItem {
                     icon: "◉";
-                    label: "局域网";
+                    label: Tr.nav_peers;
                     selected: page == 2;
                     clicked => {
                         root.page = 2;
@@ -1403,7 +1520,7 @@ export component AppWindow inherits Window {
 
                 NavItem {
                     icon: "☺";
-                    label: "账户";
+                    label: Tr.nav_account;
                     selected: page == 3;
                     clicked => {
                         root.page = 3;
@@ -1412,7 +1529,7 @@ export component AppWindow inherits Window {
 
                 NavItem {
                     icon: "▣";
-                    label: "设备";
+                    label: Tr.nav_devices;
                     selected: page == 4;
                     clicked => {
                         root.page = 4;
@@ -1421,7 +1538,7 @@ export component AppWindow inherits Window {
 
                 NavItem {
                     icon: "⚙";
-                    label: "设置";
+                    label: Tr.nav_settings;
                     selected: page == 5;
                     clicked => {
                         root.page = 5;
@@ -1448,7 +1565,7 @@ export component AppWindow inherits Window {
                     }
 
                     Text {
-                        text: root.online ? "已上线" : "离线";
+                        text: root.online ? Tr.status_online : Tr.status_offline;
                         color: root.online ? Palette.success : Palette.text-dim;
                         font-size: 12px;
                         font-weight: 600;
@@ -1579,6 +1696,9 @@ export component AppWindow inherits Window {
                 }
                 open-config-file => {
                     root.do-open-config();
+                }
+                set-language(lang) => {
+                    root.set-language(lang);
                 }
             }
         }

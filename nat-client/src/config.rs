@@ -166,6 +166,14 @@ pub struct ClientConfig {
     /// 端口转发规则列表（对端连入时决定转发到哪个本地服务）
     #[serde(default)]
     pub forward_rules: Vec<ForwardRule>,
+
+    /// 界面语言（"zh" 或 "en"，默认中文）
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "zh".to_owned()
 }
 
 fn default_ipc_port() -> u16 {
@@ -398,6 +406,16 @@ impl ClientConfig {
 
     pub fn set_api_url(url: &str) {
         Self::update(|c| c.api_url = url.to_owned());
+    }
+
+    // ── 语言设置 ─────────────────────────────────────────────────────────────
+
+    pub fn get_language() -> String {
+        CONFIG.read().unwrap().language.clone()
+    }
+
+    pub fn set_language(lang: &str) {
+        Self::update(|c| c.language = lang.to_owned());
     }
 
     // ── 转发规则管理 ─────────────────────────────────────────────────────────
