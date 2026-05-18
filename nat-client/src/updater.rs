@@ -62,20 +62,24 @@ where
     }
 
     std::thread::spawn(move || {
-        // 参考 RustDesk：启动 30 秒后首次检查
-        std::thread::sleep(INITIAL_DELAY);
+        // 启动后等待 30 秒，避免影响启动速度
+        // 用 recv_timeout 等待，以便 Exit 信号能立即中断
+        match rx.recv_timeout(INITIAL_DELAY) {
+            Ok(UpdateMsg::Exit) | Err(RecvTimeoutError::Disconnected) => return,
+            _ => {}
+        }
 
-        let mut last_check_time = std::time::Instant::now()
-            .checked_sub(AUTO_CHECK_INTERVAL)
-            .unwrap_or(std::time::Instant::now());
+        // 首次检查（每次启动 app 均执行）
+        do_auto_check(&api_url, &on_update_found);
+        let mut last_check_time = std::time::Instant::now();
 
+        // 后续每 24 小时检查一次
         loop {
-            let elapsed = last_check_time.elapsed();
-            let wait = AUTO_CHECK_INTERVAL.saturating_sub(elapsed);
+            let wait = AUTO_CHECK_INTERVAL.saturating_sub(last_check_time.elapsed());
 
             match rx.recv_timeout(wait) {
                 Ok(UpdateMsg::CheckUpdate) => {
-                    // 手动触发：尊重最小间隔
+                    // 手动触发：尊重最小间隔，防止频繁触发
                     if last_check_time.elapsed() >= MIN_CHECK_INTERVAL {
                         do_auto_check(&api_url, &on_update_found);
                         last_check_time = std::time::Instant::now();
@@ -86,7 +90,7 @@ where
                     break;
                 }
                 Err(RecvTimeoutError::Timeout) => {
-                    // 定时触发
+                    // 24 小时定时触发
                     do_auto_check(&api_url, &on_update_found);
                     last_check_time = std::time::Instant::now();
                 }
