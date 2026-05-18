@@ -2087,6 +2087,10 @@ export component AppWindow inherits Window {
     preferred-height: 640px;
     background: @linear-gradient(145deg, Palette.bg, Palette.bg2);
 
+    // 应用 Logo（由 Rust 启动时注入；同时用作 OS 窗口图标）
+    in property <image> app-logo;
+    icon: app-logo;
+
     // ── 状态属性 ──────────────────────────────────────────────
     in property <bool> online;
     in property <string> peer-id;
@@ -2203,23 +2207,19 @@ export component AppWindow inherits Window {
                     padding-left: 12px;
                     spacing: 10px;
                     alignment: start;
-                    // 玻璃 Logo 图标（渐变 + 光晕）
+                    // App Logo 图标
                     Rectangle {
                         width: 36px;
                         height: 36px;
                         border-radius: 10px;
-                        background: @linear-gradient(135deg, #8ba3ff, #4c6ef5);
-                        border-width: 1px;
-                        border-color: #8ba3ff55;
-                        drop-shadow-blur: 16px;
-                        drop-shadow-color: #4c6ef560;
-                        Text {
-                            text: "N";
-                            color: white;
-                            font-size: 19px;
-                            font-weight: 900;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                        clip: true;
+                        drop-shadow-blur: 12px;
+                        drop-shadow-color: #00000040;
+                        Image {
+                            source: root.app-logo;
+                            width: 36px;
+                            height: 36px;
+                            image-fit: contain;
                         }
                     }
 

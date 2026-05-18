@@ -149,85 +149,69 @@ impl TrayManager {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 图标生成（程序内生成，不依赖外部图标文件）
+// 图标加载（从嵌入的 ICO 文件解码，并叠加在线/离线状态指示圆点）
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// 生成 32×32 RGBA 圆形图标
+/// 应用 ICO 文件字节（编译时嵌入）
+static ICON_BYTES: &[u8] = include_bytes!("../../icons/logo.ico");
+
+/// 加载 logo.ico 并缩放到 32×32，叠加状态圆点后返回托盘 Icon
 ///
-/// 在线：蓝色外环 + 绿色内圆
-/// 离线：灰色外环 + 红色内圆
+/// - online = true  → 右下角绿色圆点
+/// - online = false → 右下角灰色圆点
 fn make_icon(online: bool) -> Icon {
     const SIZE: u32 = 32;
-    const R: f32 = SIZE as f32 / 2.0;
 
-    // 颜色
-    let outer_color: [u8; 4] = [0x4c, 0x6e, 0xf5, 255]; // 主蓝
-    let inner_color: [u8; 4] = if online {
-        [0x40, 0xc0, 0x57, 255] // 绿
-    } else {
-        [0x86, 0x8e, 0x96, 255] // 灰
-    };
-    let bg: [u8; 4] = [0x1a, 0x1b, 0x1e, 0]; // 透明背景
+    let rgba_pixels = load_logo_rgba(SIZE).unwrap_or_else(|| make_fallback_rgba(SIZE, online));
 
-    let mut pixels = vec![0u8; (SIZE * SIZE * 4) as usize];
-
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let dx = x as f32 - R + 0.5;
-            let dy = y as f32 - R + 0.5;
-            let dist = (dx * dx + dy * dy).sqrt();
-
-            let color = if dist <= R * 0.46 {
-                inner_color // 内圆
-            } else if dist <= R - 1.0 {
-                outer_color // 外环
-            } else {
-                bg // 透明背景
-            };
-
-            let idx = ((y * SIZE + x) * 4) as usize;
-            pixels[idx..idx + 4].copy_from_slice(&color);
-        }
-    }
-
-    // 在内圆中心叠加字母 "N"（简单像素字，5×7）
-    if online {
-        stamp_letter_n(&mut pixels, SIZE);
-    }
-
+    let mut pixels = rgba_pixels;
+    stamp_status_dot(&mut pixels, SIZE, online);
     Icon::from_rgba(pixels, SIZE, SIZE).expect("托盘图标创建失败")
 }
 
-/// 在图标中央叠加像素字母 "N"（白色，5×7 像素）
-fn stamp_letter_n(pixels: &mut [u8], size: u32) {
-    // 5列×7行的"N"点阵（1=白色）
-    #[rustfmt::skip]
-    let pattern: [[u8; 5]; 7] = [
-        [1, 0, 0, 0, 1],
-        [1, 1, 0, 0, 1],
-        [1, 0, 1, 0, 1],
-        [1, 0, 0, 1, 1],
-        [1, 0, 0, 0, 1],
-        [1, 0, 0, 0, 1],
-        [1, 0, 0, 0, 1],
-    ];
+/// 从 ICON_BYTES 解码 ICO，缩放到 target_size，返回 RGBA 字节。
+/// 失败时返回 None。
+fn load_logo_rgba(target_size: u32) -> Option<Vec<u8>> {
+    use image::imageops::FilterType;
+    let img = image::load_from_memory_with_format(ICON_BYTES, image::ImageFormat::Ico).ok()?;
+    let img = img.resize_exact(target_size, target_size, FilterType::Lanczos3);
+    Some(img.to_rgba8().into_raw())
+}
 
-    let ox = (size / 2 - 3) as usize;
-    let oy = (size / 2 - 4) as usize;
+/// 在右下角叠加 7×7 状态圆点（绿=在线，灰=离线）
+fn stamp_status_dot(pixels: &mut Vec<u8>, size: u32, online: bool) {
+    let dot_color: [u8; 4] = if online {
+        [0x30, 0xd1, 0x58, 255] // 绿
+    } else {
+        [0x8e, 0x8e, 0x93, 200] // 灰
+    };
+    const DOT_R: f32 = 3.5;
+    let cx = size as f32 - DOT_R - 1.0;
+    let cy = size as f32 - DOT_R - 1.0;
 
-    for (row, cols) in pattern.iter().enumerate() {
-        for (col, &on) in cols.iter().enumerate() {
-            if on == 1 {
-                let px = ox + col;
-                let py = oy + row;
-                let idx = (py * size as usize + px) * 4;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 - cx;
+            let dy = y as f32 - cy;
+            if (dx * dx + dy * dy).sqrt() <= DOT_R {
+                let idx = ((y * size + x) * 4) as usize;
                 if idx + 3 < pixels.len() {
-                    pixels[idx] = 255; // R
-                    pixels[idx + 1] = 255; // G
-                    pixels[idx + 2] = 255; // B
-                    pixels[idx + 3] = 200; // A
+                    pixels[idx] = dot_color[0];
+                    pixels[idx + 1] = dot_color[1];
+                    pixels[idx + 2] = dot_color[2];
+                    pixels[idx + 3] = dot_color[3];
                 }
             }
         }
     }
+}
+
+/// ICO 解码失败时的纯色兜底图标
+fn make_fallback_rgba(size: u32, online: bool) -> Vec<u8> {
+    let fill: [u8; 4] = if online {
+        [0x4c, 0x6e, 0xf5, 255]
+    } else {
+        [0x86, 0x8e, 0x96, 255]
+    };
+    fill.iter().cloned().cycle().take((size * size * 4) as usize).collect()
 }

@@ -44,6 +44,11 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
     // 初始化配置显示值
     init_config_fields(&window);
 
+    // 设置应用 Logo（窗口标题栏图标 + 侧边栏）
+    if let Some(logo) = load_logo_image() {
+        window.set_app_logo(logo);
+    }
+
     // 初始化主题
     window
         .global::<ThemeState>()
@@ -1202,4 +1207,20 @@ fn escape_json(s: &str) -> String {
         .replace('"', "\\\"")
         .replace('\n', "\\n")
         .replace('\r', "\\r")
+}
+
+/// 从编译时嵌入的 ICO 文件解码并返回 slint::Image。
+/// 用于窗口标题栏图标（icon 属性）和侧边栏 Logo 显示。
+fn load_logo_image() -> Option<slint::Image> {
+    const ICON_BYTES: &[u8] = include_bytes!("../../icons/logo.ico");
+    let img =
+        image::load_from_memory_with_format(ICON_BYTES, image::ImageFormat::Ico).ok()?;
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let pixel_buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+        bytemuck::cast_slice(rgba.as_raw()),
+        w,
+        h,
+    );
+    Some(slint::Image::from_rgba8(pixel_buf))
 }

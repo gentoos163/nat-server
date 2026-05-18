@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(cargo check *)",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)"
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\" -Force | Select-Object Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"DIR\"}else{\"FILE\"}}} | Format-Table -AutoSize)",
+      "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\nat-client\\\\icons\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\logo1.ico\" \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\nat-client\\\\icons\\\\logo.ico\" -Force)"
     ]
   }
 }
