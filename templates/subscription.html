@@ -134,6 +134,46 @@
         color: var(--green);
         font-weight: 600;
     }
+
+    /* ── 支付弹窗 ── */
+    .pay-overlay {
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.45);
+        z-index: 1000;
+        align-items: center; justify-content: center;
+    }
+    .pay-overlay.active { display: flex; }
+    .pay-modal {
+        background: var(--surface);
+        border-radius: var(--radius);
+        box-shadow: 0 12px 48px rgba(0,0,0,0.24);
+        padding: 32px;
+        max-width: 420px;
+        width: 90%;
+        text-align: center;
+    }
+    .pay-modal h3 { margin: 0 0 4px; font-size: 18px; }
+    .pay-modal .pay-desc { color: var(--text2); font-size: 13px; margin-bottom: 24px; }
+    .pay-methods { display: flex; gap: 10px; margin-bottom: 24px; }
+    .pay-method-btn {
+        flex: 1; padding: 12px 8px; border-radius: 10px;
+        border: 2px solid var(--border); background: var(--surface);
+        cursor: pointer; font-size: 14px; font-weight: 600;
+        color: var(--text); transition: border-color 0.15s, background 0.15s;
+    }
+    .pay-method-btn.active { border-color: var(--blue); background: rgba(0,113,227,0.08); color: var(--blue); }
+    .pay-method-btn:hover:not(.active) { border-color: var(--blue); }
+    .qr-wrap {
+        display: none; flex-direction: column; align-items: center; gap: 10px;
+        margin-bottom: 20px;
+    }
+    .qr-wrap.visible { display: flex; }
+    .qr-wrap img { width: 200px; height: 200px; border-radius: 8px; border: 1px solid var(--border); }
+    .qr-hint { font-size: 12px; color: var(--text3); }
+    .pay-status { font-size: 13px; min-height: 20px; margin-bottom: 16px; }
+    .pay-status.ok  { color: var(--green); }
+    .pay-status.err { color: var(--red); }
 </style>
 {% endblock %}
 
@@ -147,6 +187,37 @@
 <div class="section-heading">套餐对比</div>
 <div class="plans-grid" id="plans-grid">
     <div style="text-align:center;color:var(--text3);padding:32px 0;grid-column:1/-1">{{ t.label_loading }}</div>
+</div>
+
+<!-- 支付弹窗 -->
+<div class="pay-overlay" id="pay-overlay" onclick="closePay(event)">
+    <div class="pay-modal" onclick="event.stopPropagation()">
+        <h3 id="pay-plan-name">套餐升级</h3>
+        <p class="pay-desc" id="pay-plan-desc"></p>
+
+        <div class="pay-methods">
+            <button class="pay-method-btn active" id="btn-alipay" onclick="selectMethod('alipay')">
+                支付宝
+            </button>
+            <button class="pay-method-btn" id="btn-stripe" onclick="selectMethod('stripe')">
+                Stripe（信用卡）
+            </button>
+        </div>
+
+        <div class="qr-wrap" id="qr-wrap">
+            <img id="qr-img" src="" alt="支付宝二维码">
+            <span class="qr-hint">使用支付宝 App 扫码支付</span>
+        </div>
+
+        <div class="pay-status" id="pay-status"></div>
+
+        <button class="btn btn-primary" id="pay-btn" onclick="doPay()" style="width:100%">
+            立即支付
+        </button>
+        <button class="btn btn-secondary" onclick="closePay()" style="width:100%;margin-top:8px">
+            取消
+        </button>
+    </div>
 </div>
 {% endblock %}
 
@@ -262,7 +333,9 @@
                 : "不限速";
             const btn = isCurrent
                 ? `<button class="btn btn-secondary btn-sm" disabled style="cursor:default;opacity:0.6">${_subT.currentPlan}</button>`
-                : `<button class="btn btn-primary btn-sm" onclick="contactAdmin('${escapeHtml(p.display_name)}')">${_subT.upgrade}</button>`;
+                : p.price_monthly <= 0
+                ? `<button class="btn btn-secondary btn-sm" disabled style="cursor:default;opacity:0.6">免费</button>`
+                : `<button class="btn btn-primary btn-sm" onclick="contactAdmin(${p.id},'${escapeHtml(p.display_name)}',${p.price_monthly})">${_subT.upgrade}</button>`;
             return `<div class="plan-card${isCurrent ? " current" : ""}">
                 <div class="plan-card-name">${escapeHtml(p.display_name)}</div>
                 <div class="plan-price">${priceHtml}</div>
@@ -276,8 +349,128 @@
         }).join("");
     }
 
-    function contactAdmin(planName) {
-        showInfo("请联系管理员申请升级到【" + planName + "】套餐");
+    // ── 支付弹窗状态 ──────────────────────────────────────────────
+    let _payPlanId = null;
+    let _payMethod = "alipay";
+    let _orderNo   = null;
+    let _pollTimer = null;
+
+    function openPay(planId, planName, price) {
+        _payPlanId = planId;
+        _orderNo   = null;
+        document.getElementById("pay-plan-name").textContent = "升级到：" + planName;
+        document.getElementById("pay-plan-desc").textContent = "月费 ¥" + price + "，支付后立即激活 30 天订阅";
+        document.getElementById("qr-wrap").classList.remove("visible");
+        document.getElementById("qr-img").src = "";
+        setPayStatus("", "");
+        document.getElementById("pay-btn").disabled = false;
+        document.getElementById("pay-btn").textContent = "立即支付";
+        selectMethod("alipay");
+        document.getElementById("pay-overlay").classList.add("active");
+    }
+
+    function closePay(e) {
+        if (e && e.target !== document.getElementById("pay-overlay")) return;
+        document.getElementById("pay-overlay").classList.remove("active");
+        stopPoll();
+    }
+
+    function selectMethod(m) {
+        _payMethod = m;
+        document.getElementById("btn-alipay").classList.toggle("active", m === "alipay");
+        document.getElementById("btn-stripe").classList.toggle("active", m === "stripe");
+        document.getElementById("qr-wrap").classList.remove("visible");
+        document.getElementById("qr-img").src = "";
+        setPayStatus("", "");
+        document.getElementById("pay-btn").disabled = false;
+        document.getElementById("pay-btn").textContent = "立即支付";
+        _orderNo = null;
+        stopPoll();
+    }
+
+    function setPayStatus(msg, cls) {
+        const el = document.getElementById("pay-status");
+        el.textContent = msg;
+        el.className = "pay-status" + (cls ? " " + cls : "");
+    }
+
+    async function doPay() {
+        if (!_payPlanId) return;
+        const btn = document.getElementById("pay-btn");
+        btn.disabled = true;
+        btn.textContent = "请稍候…";
+        setPayStatus("正在创建订单…", "");
+
+        try {
+            const res = await fetch("/api/payment/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                body: JSON.stringify({ plan_id: _payPlanId, method: _payMethod }),
+            });
+            const data = await res.json();
+            if (!data.success && data.success !== undefined) {
+                setPayStatus("❌ " + (data.message || "下单失败"), "err");
+                btn.disabled = false;
+                btn.textContent = "重试";
+                return;
+            }
+            const d = data.data || data;
+            _orderNo = d.order_no;
+
+            if (_payMethod === "alipay" && d.qr_content) {
+                // 生成二维码图片（使用 qrserver.com 公共 API，或可替换为本地生成）
+                const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent(d.qr_content);
+                document.getElementById("qr-img").src = qrUrl;
+                document.getElementById("qr-wrap").classList.add("visible");
+                setPayStatus("等待扫码支付…", "");
+                btn.textContent = "等待支付中…";
+                startPoll();
+            } else if (_payMethod === "stripe" && d.checkout_url) {
+                setPayStatus("正在跳转到 Stripe…", "");
+                window.open(d.checkout_url, "_blank");
+                btn.disabled = false;
+                btn.textContent = "已跳转，等待支付完成";
+                startPoll();
+            } else {
+                setPayStatus("❌ 服务器未返回支付信息", "err");
+                btn.disabled = false;
+                btn.textContent = "重试";
+            }
+        } catch (e) {
+            setPayStatus("❌ 网络错误: " + e.message, "err");
+            btn.disabled = false;
+            btn.textContent = "重试";
+        }
+    }
+
+    function startPoll() {
+        stopPoll();
+        _pollTimer = setInterval(async () => {
+            if (!_orderNo) return;
+            try {
+                const res = await fetch("/api/payment/order/" + _orderNo, { headers: authHeaders() });
+                const data = await res.json();
+                const status = (data.data || data).status;
+                if (status === "paid") {
+                    stopPoll();
+                    setPayStatus("✅ 支付成功！订阅已激活，正在刷新…", "ok");
+                    document.getElementById("pay-btn").textContent = "支付成功";
+                    setTimeout(() => {
+                        document.getElementById("pay-overlay").classList.remove("active");
+                        loadData();
+                    }, 2000);
+                }
+            } catch (_) {}
+        }, 3000);
+    }
+
+    function stopPoll() {
+        if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+    }
+
+    // 替换原来的 contactAdmin
+    function contactAdmin(planId, planName, price) {
+        openPay(planId, planName, price);
     }
 </script>
 {% endblock %}

@@ -831,6 +831,130 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             ClientConfig::set_dark_mode(new_dark);
         });
     }
+
+    // ── 刷新订阅套餐列表 ─────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_refresh_plans(move || {
+            if let Some(w) = win.upgrade() {
+                refresh_plans(&w, ipc_port);
+            }
+        });
+    }
+
+    // ── 支付宝扫码支付 ───────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_pay_alipay(move |plan_id| {
+            let Some(w) = win.upgrade() else { return };
+            w.set_pay_status_msg("正在创建支付宝订单…".into());
+            w.set_pay_status_ok(false);
+            w.set_pay_qr_visible(false);
+
+            let win2 = w.as_weak();
+            std::thread::spawn(move || {
+                let cmd = format!(r#"{{"cmd":"payment_create","plan_id":{},"method":"alipay"}}"#, plan_id);
+                let resp = blocking_ipc(ipc_port, &cmd);
+
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    match serde_json::from_str::<serde_json::Value>(&resp) {
+                        Ok(v) => {
+                            let d = v.get("data").unwrap_or(&v);
+                            if let Some(qr) = d["qr_content"].as_str() {
+                                // 根据计划名和价格更新显示
+                                if let Some(name) = d["plan_name"].as_str() {
+                                    w.set_pay_selected_plan_name(name.into());
+                                }
+                                // 生成二维码图片
+                                match make_qr_image(qr) {
+                                    Ok(img) => {
+                                        w.set_pay_qr_image(img);
+                                        w.set_pay_qr_visible(true);
+                                        w.set_pay_status_msg("请使用支付宝扫码完成支付".into());
+                                        w.set_pay_status_ok(true);
+                                        // 启动轮询（存储 order_no 用于查询）
+                                        if let Some(order_no) = d["order_no"].as_str() {
+                                            start_payment_poll(win2.clone(), ipc_port, order_no.to_string());
+                                        }
+                                    }
+                                    Err(e) => {
+                                        w.set_pay_status_msg(format!("二维码生成失败: {}", e).into());
+                                        w.set_pay_status_ok(false);
+                                    }
+                                }
+                            } else {
+                                let msg = v["message"].as_str().unwrap_or("下单失败，请检查支付宝配置");
+                                w.set_pay_status_msg(format!("❌ {}", msg).into());
+                                w.set_pay_status_ok(false);
+                            }
+                        }
+                        Err(_) => {
+                            w.set_pay_status_msg("❌ 网络错误".into());
+                            w.set_pay_status_ok(false);
+                        }
+                    }
+                });
+            });
+        });
+    }
+
+    // ── Stripe 支付（打开浏览器）────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_pay_stripe(move |plan_id| {
+            let Some(w) = win.upgrade() else { return };
+            w.set_pay_status_msg("正在创建 Stripe 会话…".into());
+            w.set_pay_status_ok(false);
+
+            let win2 = w.as_weak();
+            std::thread::spawn(move || {
+                let cmd = format!(r#"{{"cmd":"payment_create","plan_id":{},"method":"stripe"}}"#, plan_id);
+                let resp = blocking_ipc(ipc_port, &cmd);
+
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    match serde_json::from_str::<serde_json::Value>(&resp) {
+                        Ok(v) => {
+                            let d = v.get("data").unwrap_or(&v);
+                            if let Some(url) = d["checkout_url"].as_str() {
+                                // 打开系统浏览器
+                                if let Err(e) = open::that(url) {
+                                    w.set_pay_status_msg(format!("❌ 无法打开浏览器: {}", e).into());
+                                    w.set_pay_status_ok(false);
+                                } else {
+                                    w.set_pay_status_msg("✅ 已在浏览器打开 Stripe，请完成支付后刷新套餐".into());
+                                    w.set_pay_status_ok(true);
+                                    if let Some(order_no) = d["order_no"].as_str() {
+                                        start_payment_poll(win2.clone(), ipc_port, order_no.to_string());
+                                    }
+                                }
+                            } else {
+                                let msg = v["message"].as_str().unwrap_or("Stripe 下单失败");
+                                w.set_pay_status_msg(format!("❌ {}", msg).into());
+                                w.set_pay_status_ok(false);
+                            }
+                        }
+                        Err(_) => {
+                            w.set_pay_status_msg("❌ 网络错误".into());
+                            w.set_pay_status_ok(false);
+                        }
+                    }
+                });
+            });
+        });
+    }
+
+    // ── 关闭支付宝二维码 ─────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_close_qr(move || {
+            if let Some(w) = win.upgrade() {
+                w.set_pay_qr_visible(false);
+                w.set_pay_status_msg("".into());
+            }
+        });
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -975,6 +1099,101 @@ fn format_duration(secs: i64) -> String {
     } else {
         format!("{:.1}小时", secs as f64 / 3600.0)
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 订阅套餐刷新
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn refresh_plans(w: &AppWindow, ipc_port: u16) {
+    w.set_pay_loading(true);
+    let resp_plans = blocking_ipc(ipc_port, r#"{"cmd":"get_plans"}"#);
+    let resp_my    = blocking_ipc(ipc_port, r#"{"cmd":"auth_subscription"}"#);
+    w.set_pay_loading(false);
+
+    let current_plan_name = serde_json::from_str::<serde_json::Value>(&resp_my)
+        .ok()
+        .and_then(|v| v["subscription"]["plan_name"].as_str().map(|s| s.to_owned()))
+        .unwrap_or_default();
+
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp_plans) {
+        if let Some(arr) = v["plans"].as_array() {
+            let items: Vec<PlanItem> = arr
+                .iter()
+                .map(|p| PlanItem {
+                    id: p["id"].as_i64().unwrap_or(0) as i32,
+                    name: p["name"].as_str().unwrap_or("").into(),
+                    display_name: p["display_name"].as_str().unwrap_or("").into(),
+                    price_monthly: p["price_monthly"].as_f64().unwrap_or(0.0) as f32,
+                    device_limit: p["device_limit"].as_i64().unwrap_or(0) as i32,
+                    speed_limit_kbps: p["speed_limit_kbps"].as_i64().unwrap_or(0) as i32,
+                    description: p["description"].as_str().unwrap_or("").into(),
+                    is_current: p["name"].as_str().unwrap_or("") == current_plan_name,
+                })
+                .collect();
+            w.set_pay_plans(ModelRc::new(VecModel::from(items)));
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 二维码图片生成（qrcode + image → slint::Image）
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn make_qr_image(content: &str) -> Result<slint::Image, String> {
+    use qrcode::QrCode;
+    use image::{DynamicImage, Luma};
+
+    let code = QrCode::new(content.as_bytes())
+        .map_err(|e| format!("QR 编码失败: {}", e))?;
+
+    // 渲染为灰度图（6px 模块大小，安静区 4）
+    let luma: image::ImageBuffer<Luma<u8>, Vec<u8>> = code
+        .render::<Luma<u8>>()
+        .quiet_zone(true)
+        .module_dimensions(6, 6)
+        .build();
+
+    let rgba = DynamicImage::ImageLuma8(luma).to_rgba8();
+    let width  = rgba.width();
+    let height = rgba.height();
+    let raw    = rgba.into_raw();
+
+    let pixel_buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+        bytemuck::cast_slice(&raw),
+        width,
+        height,
+    );
+    Ok(slint::Image::from_rgba8(pixel_buf))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 支付状态轮询（后台线程每 3 秒查一次 IPC，支付成功后刷新套餐）
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn start_payment_poll(win: slint::Weak<AppWindow>, ipc_port: u16, order_no: String) {
+    std::thread::spawn(move || {
+        for _ in 0..40 { // 最多轮询 2 分钟
+            std::thread::sleep(Duration::from_secs(3));
+            let cmd = format!(r#"{{"cmd":"payment_status","order_no":"{}"}}"#, order_no);
+            let resp = blocking_ipc(ipc_port, &cmd);
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                let status = v["status"].as_str().unwrap_or("");
+                if status == "paid" {
+                    let win2 = win.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = win2.upgrade() {
+                            w.set_pay_qr_visible(false);
+                            w.set_pay_status_msg("✅ 支付成功！订阅已激活".into());
+                            w.set_pay_status_ok(true);
+                            refresh_plans(&w, ipc_port);
+                        }
+                    });
+                    return;
+                }
+            }
+        }
+    });
 }
 
 /// 转义 JSON 字符串中的特殊字符

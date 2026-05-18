@@ -582,6 +582,11 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
         )
         // 系统信息 API
         .route("/api/admin/sysinfo", get(crate::settings_api::get_sysinfo))
+        // ── 收款 API ──────────────────────────────────────────────────────────
+        .route("/api/payment/create", post(crate::payment::create_payment))
+        .route("/api/payment/order/:order_no", get(crate::payment::query_order))
+        .route("/api/payment/alipay/notify", post(crate::payment::alipay_notify))
+        .route("/api/payment/stripe/webhook", post(crate::payment::stripe_webhook))
         .layer(axum::middleware::from_fn(cors_middleware))
         .layer(axum::Extension(state))
 }

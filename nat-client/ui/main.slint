@@ -1860,6 +1860,224 @@ component TunnelPage inherits VerticalLayout {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 套餐数据结构
+// ─────────────────────────────────────────────────────────────
+
+export struct PlanItem {
+    id: int,
+    name: string,
+    display-name: string,
+    price-monthly: float,
+    device-limit: int,
+    speed-limit-kbps: int,
+    description: string,
+    is-current: bool,
+}
+
+// ─────────────────────────────────────────────────────────────
+// 页面 7：订阅 / 收款
+// ─────────────────────────────────────────────────────────────
+
+component PaymentPage inherits VerticalLayout {
+    in property <[PlanItem]> plans;
+    in property <bool> loading;
+    in property <string> status-msg;
+    in property <bool> status-ok;
+    // 支付宝二维码（Rust 端生成 slint::Image 后推入）
+    in property <image> qr-image;
+    in property <bool> qr-visible;
+    in property <string> selected-plan-name;
+    in property <float> selected-plan-price;
+    // 当前支付方式：0 = 支付宝，1 = Stripe
+    in-out property <int> pay-method: 0;
+
+    callback refresh-plans();
+    callback pay-alipay(int);   // plan_id
+    callback pay-stripe(int);   // plan_id
+    callback close-qr();
+
+    spacing: 0px;
+    padding: 24px;
+
+    // ── 标题行 ────────────────────────────────────────────────
+    HorizontalLayout {
+        height: 36px;
+        Text {
+            text: "订阅套餐";
+            color: Palette.text-bright;
+            font-size: 20px;
+            font-weight: 700;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        GhostBtn {
+            text: root.loading ? Tr.status_loading : Tr.btn_refresh;
+            width: 72px;
+            clicked => { root.refresh-plans(); }
+        }
+    }
+
+    Rectangle { height: 16px; }
+
+    // ── 套餐卡片网格 ──────────────────────────────────────────
+    if root.plans.length == 0: Rectangle {
+        height: 100px;
+        Text {
+            text: root.loading ? Tr.status_loading : "暂无套餐信息";
+            color: Palette.text-dim;
+            font-size: 14px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.plans.length > 0: HorizontalLayout {
+        spacing: 12px;
+        for plan in root.plans: Card {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 10px;
+                alignment: start;
+
+                // 套餐名
+                Text {
+                    text: plan.display-name;
+                    color: Palette.text-bright;
+                    font-size: 15px;
+                    font-weight: 700;
+                }
+
+                // 价格
+                Text {
+                    text: plan.price-monthly > 0
+                        ? ("¥" + round(plan.price-monthly) + " /月")
+                        : "免费";
+                    color: plan.price-monthly > 0 ? Palette.primary : Palette.success;
+                    font-size: 22px;
+                    font-weight: 800;
+                }
+
+                // 设备数
+                Label {
+                    text: plan.device-limit > 0
+                        ? ("最多 " + plan.device-limit + " 台设备")
+                        : "无限设备";
+                }
+
+                // 限速
+                Label {
+                    text: plan.speed-limit-kbps > 0
+                        ? ("限速 " + round(plan.speed-limit-kbps / 1024) + " Mbps")
+                        : "不限速";
+                }
+
+                if plan.description != "": Label {
+                    text: plan.description;
+                    wrap: word-wrap;
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                // 当前套餐标签 or 支付按钮
+                if plan.is-current: Rectangle {
+                    height: 32px;
+                    border-radius: 10px;
+                    background: Palette.success-glow;
+                    Text {
+                        text: "当前套餐 ✓";
+                        color: Palette.success;
+                        font-size: 12px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if !plan.is-current && plan.price-monthly > 0: VerticalLayout {
+                    spacing: 6px;
+                    // 支付宝按钮
+                    PBtn {
+                        text: "支付宝扫码";
+                        height: 32px;
+                        clicked => { root.pay-alipay(plan.id); }
+                    }
+                    // Stripe 按钮
+                    GhostBtn {
+                        text: "Stripe 信用卡";
+                        clicked => { root.pay-stripe(plan.id); }
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle { height: 16px; }
+
+    // ── 支付宝二维码卡片 ──────────────────────────────────────
+    if root.qr-visible: Card {
+        VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
+            alignment: center;
+
+            HorizontalLayout {
+                Text {
+                    text: "支付宝扫码支付 — " + root.selected-plan-name;
+                    color: Palette.text-bright;
+                    font-size: 15px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "¥" + round(root.selected-plan-price);
+                    color: Palette.primary;
+                    font-size: 18px;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                }
+            }
+
+            Divider {}
+
+            HorizontalLayout {
+                alignment: center;
+                Image {
+                    source: root.qr-image;
+                    width: 200px;
+                    height: 200px;
+                    image-rendering: pixelated;
+                }
+            }
+
+            Label { text: "使用支付宝 App 扫描上方二维码完成支付"; horizontal-alignment: center; }
+
+            if root.status-msg != "": StatusMsg {
+                msg: root.status-msg;
+                ok: root.status-ok;
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                GhostBtn {
+                    text: "关闭";
+                    width: 80px;
+                    clicked => { root.close-qr(); }
+                }
+            }
+        }
+    }
+
+    if root.status-msg != "" && !root.qr-visible: StatusMsg {
+        msg: root.status-msg;
+        ok: root.status-ok;
+    }
+
+    Rectangle { vertical-stretch: 1; }
+}
+
+// ─────────────────────────────────────────────────────────────
 // 主窗口
 // ─────────────────────────────────────────────────────────────
 
@@ -1894,6 +2112,15 @@ export component AppWindow inherits Window {
     in-out property <string> tunnel-new-port;
     in-out property <string> tunnel-new-host: "127.0.0.1";
     in-out property <string> tunnel-new-filter;
+    // ── 订阅 / 收款 ──────────────────────────────────────────
+    in property <[PlanItem]> pay-plans;
+    in property <bool>   pay-loading;
+    in property <string> pay-status-msg;
+    in property <bool>   pay-status-ok;
+    in property <image>  pay-qr-image;
+    in property <bool>   pay-qr-visible;
+    in property <string> pay-selected-plan-name;
+    in property <float>  pay-selected-plan-price;
 
     in property <bool> connecting;
     in property <bool> discovering;
@@ -1953,6 +2180,10 @@ export component AppWindow inherits Window {
     callback do-remove-rule(string);
     callback do-refresh-rules();
     callback do-toggle-theme();
+    callback do-refresh-plans();
+    callback do-pay-alipay(int);   // plan_id
+    callback do-pay-stripe(int);   // plan_id
+    callback do-close-qr();
 
     // ── 布局 ──────────────────────────────────────────────────
     HorizontalLayout {
@@ -2078,6 +2309,16 @@ export component AppWindow inherits Window {
                     clicked => {
                         root.page = 6;
                         root.do-refresh-rules();
+                    }
+                }
+
+                NavItem {
+                    icon: "★";
+                    label: "订阅套餐";
+                    selected: page == 7;
+                    clicked => {
+                        root.page = 7;
+                        root.do-refresh-plans();
                     }
                 }
 
@@ -2322,6 +2563,23 @@ export component AppWindow inherits Window {
                 refresh-rules => { root.do-refresh-rules(); }
                 add-rule => { root.do-add-rule(); }
                 remove-rule(id) => { root.do-remove-rule(id); }
+            }
+
+            if page == 7: PaymentPage {
+                width: parent.width;
+                height: parent.height;
+                plans <=> root.pay-plans;
+                loading <=> root.pay-loading;
+                status-msg <=> root.pay-status-msg;
+                status-ok <=> root.pay-status-ok;
+                qr-image <=> root.pay-qr-image;
+                qr-visible <=> root.pay-qr-visible;
+                selected-plan-name <=> root.pay-selected-plan-name;
+                selected-plan-price <=> root.pay-selected-plan-price;
+                refresh-plans => { root.do-refresh-plans(); }
+                pay-alipay(id) => { root.do-pay-alipay(id); }
+                pay-stripe(id) => { root.do-pay-stripe(id); }
+                close-qr => { root.do-close-qr(); }
             }
         }
     }

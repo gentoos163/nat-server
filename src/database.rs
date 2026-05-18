@@ -231,6 +231,7 @@ impl Database {
         self.migrate_users_add_role_column().await?;
         self.migrate_subscriptions().await?;
         self.migrate_settings().await?;
+        self.migrate_orders().await?;
         self.bootstrap_admin_if_none().await?;
 
         Ok(())

@@ -14,7 +14,7 @@ path = "src/main.rs"
 # 默认启用 GUI；daemon/server 场景可用 --no-default-features 关闭
 [features]
 default = ["gui"]
-gui = ["dep:slint", "dep:tray-icon", "dep:image", "dep:slint-build"]
+gui = ["dep:slint", "dep:tray-icon", "dep:image", "dep:qrcode", "dep:slint-build"]
 
 [dependencies]
 # 核心通信库
@@ -39,6 +39,8 @@ rand         = "0.8"
 env_logger   = "0.11"
 jsonwebtoken = "8"
 reqwest      = { version = "0.11", features = ["json", "blocking"] }
+open         = "5"
+bytemuck     = { version = "1", features = ["derive"] }
 icu_provider = { version = "2.2", features = ["logging"] }
 chrono       = { version = "0.4", features = ["serde"] }
 
@@ -46,6 +48,7 @@ chrono       = { version = "0.4", features = ["serde"] }
 slint     = { version = "1.16", default-features = false, features = ["compat-1-2","backend-winit","renderer-femtovg","std"], optional = true }
 tray-icon = { version = "0.24", optional = true }
 image     = { version = "0.25", default-features = false, features = ["png"], optional = true }
+qrcode    = { version = "0.14", optional = true }
 
 [build-dependencies]
 slint-build = { version = "1.16", optional = true }
