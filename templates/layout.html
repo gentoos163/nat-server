@@ -30,6 +30,99 @@
                     "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
             }
 
+            /* ── 深色模式变量覆盖 ───────────────────────────────── */
+            [data-theme="dark"] {
+                --bg: #1d1d1f;
+                --surface: #2c2c2e;
+                --surface2: #1c1c1e;
+                --text: #f5f5f7;
+                --text2: #98989d;
+                --text3: #636366;
+                --border: rgba(255, 255, 255, 0.12);
+                --shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+                --shadow-l: 0 8px 32px rgba(0, 0, 0, 0.5);
+                --blue: #0a84ff;
+                --blue-h: #1a90ff;
+                --green: #32d74b;
+                --red: #ff453a;
+                --orange: #ff9f0a;
+            }
+            [data-theme="dark"] .nav {
+                background: rgba(28, 28, 30, 0.88);
+                border-bottom-color: rgba(255, 255, 255, 0.1);
+            }
+            [data-theme="dark"] .btn-secondary {
+                background: rgba(255, 255, 255, 0.12);
+            }
+            [data-theme="dark"] .btn-secondary:hover {
+                background: rgba(255, 255, 255, 0.18);
+            }
+            [data-theme="dark"] .search-input,
+            [data-theme="dark"] .form-group input,
+            [data-theme="dark"] .form-group select,
+            [data-theme="dark"] .form-group textarea {
+                background: var(--surface2);
+                color: var(--text);
+            }
+            [data-theme="dark"] .form-group input:focus,
+            [data-theme="dark"] .form-group select:focus,
+            [data-theme="dark"] .form-group textarea:focus {
+                background: #3a3a3c;
+            }
+            [data-theme="dark"] .form-group .hint code {
+                background: rgba(255, 255, 255, 0.1);
+            }
+            [data-theme="dark"] tbody tr:hover td {
+                background: rgba(255, 255, 255, 0.03);
+            }
+            [data-theme="dark"] .badge-green {
+                background: rgba(50, 215, 75, 0.15);
+                color: #32d74b;
+            }
+            [data-theme="dark"] .badge-red {
+                background: rgba(255, 69, 58, 0.15);
+                color: #ff453a;
+            }
+            [data-theme="dark"] .badge-blue {
+                background: rgba(10, 132, 255, 0.15);
+                color: #0a84ff;
+            }
+            [data-theme="dark"] .badge-gray {
+                background: rgba(255, 255, 255, 0.1);
+            }
+            [data-theme="dark"] .badge-orange {
+                background: rgba(255, 159, 10, 0.15);
+                color: #ff9f0a;
+            }
+            [data-theme="dark"] .nav-links a:hover {
+                background: rgba(255, 255, 255, 0.08);
+            }
+            [data-theme="dark"] .nav-links a.active {
+                background: rgba(10, 132, 255, 0.15);
+            }
+            [data-theme="dark"] .lang-switcher a:hover {
+                background: rgba(255, 255, 255, 0.08);
+            }
+            /* 主题切换按钮 */
+            .theme-btn {
+                font-size: 16px;
+                background: none;
+                border: none;
+                cursor: pointer;
+                padding: 4px 8px;
+                border-radius: 6px;
+                color: var(--text2);
+                transition: background 0.15s, color 0.15s;
+                line-height: 1;
+            }
+            .theme-btn:hover {
+                background: rgba(0, 0, 0, 0.06);
+                color: var(--text);
+            }
+            [data-theme="dark"] .theme-btn:hover {
+                background: rgba(255, 255, 255, 0.08);
+            }
+
             /* ── Reset ─────────────────────────────────────────── */
             *,
             *::before,
@@ -595,6 +688,7 @@
                 <span class="nav-user">{{ user.username }}</span>
                 <button class="nav-logout" onclick="logout()">{{ t.nav_logout }}</button>
                 {% endif %}
+                <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="切换主题">☀</button>
                 <div class="lang-switcher">
                     <a href="/set-lang?lang=zh" class="{% if lang == "zh" %}lang-active{% endif %}">中</a>
                     <a href="/set-lang?lang=en" class="{% if lang == "en" %}lang-active{% endif %}">EN</a>
@@ -639,6 +733,36 @@
                 "error-message": null,
                 "success-message": null,
             };
+
+            /* ── 主题 ───────────────────────────────────────────────── */
+            (function () {
+                var saved = localStorage.getItem("theme");
+                var dark = saved ? saved === "dark"
+                    : window.matchMedia("(prefers-color-scheme: dark)").matches;
+                if (dark) document.documentElement.setAttribute("data-theme", "dark");
+            })();
+
+            function applyTheme(dark) {
+                if (dark) {
+                    document.documentElement.setAttribute("data-theme", "dark");
+                } else {
+                    document.documentElement.removeAttribute("data-theme");
+                }
+                var btn = document.getElementById("theme-btn");
+                if (btn) btn.textContent = dark ? "◑" : "☀";
+                localStorage.setItem("theme", dark ? "dark" : "light");
+            }
+
+            function toggleTheme() {
+                var dark = document.documentElement.getAttribute("data-theme") === "dark";
+                applyTheme(!dark);
+            }
+
+            document.addEventListener("DOMContentLoaded", function () {
+                var dark = document.documentElement.getAttribute("data-theme") === "dark";
+                var btn = document.getElementById("theme-btn");
+                if (btn) btn.textContent = dark ? "◑" : "☀";
+            });
 
             /* ── Auth ───────────────────────────────────────────────── */
             function logout() {

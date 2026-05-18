@@ -171,6 +171,10 @@ pub struct ClientConfig {
     #[serde(default = "default_language")]
     pub language: String,
 
+    /// 界面主题（true = 深色，false = 浅色，默认深色）
+    #[serde(default = "default_true")]
+    pub dark_mode: bool,
+
     // ── SOCKS5 / HTTP 代理设置 ────────────────────────────────────────────────
     /// 是否启用 SOCKS5 代理
     #[serde(default)]
@@ -445,6 +449,14 @@ impl ClientConfig {
 
     pub fn set_language(lang: &str) {
         Self::update(|c| c.language = lang.to_owned());
+    }
+
+    pub fn get_dark_mode() -> bool {
+        CONFIG.read().unwrap().dark_mode
+    }
+
+    pub fn set_dark_mode(dark: bool) {
+        Self::update(|c| c.dark_mode = dark);
     }
 
     // ── 代理设置 ─────────────────────────────────────────────────────────────

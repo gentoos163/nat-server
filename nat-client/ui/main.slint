@@ -125,33 +125,73 @@ export struct BoundDevice {
     created-at: string,
 }
 
+export struct ForwardRule {
+    rule-id: string,
+    name: string,
+    target-host: string,
+    target-port: string,   // 字符串，便于直接拼接显示
+    peer-id-filter: string,
+}
+
 // ─────────────────────────────────────────────────────────────
-// 调色板
+// 主题状态（由 Rust 初始化并在切换时更新）
+// ─────────────────────────────────────────────────────────────
+
+export global ThemeState {
+    in-out property <bool> dark: true;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 调色板（所有颜色随 ThemeState.dark 自动切换）
 // ─────────────────────────────────────────────────────────────
 
 global Palette {
-    // ── 深色玻璃背景 ─────────────────────────────────────────
-    out property <color> bg:           #070a13;
-    out property <color> sidebar:      #05070d;
-    // ── 玻璃层 ───────────────────────────────────────────────
-    out property <color> card:         #ffffff0c;
-    out property <color> border:       #ffffff20;
-    out property <color> border-hi:    #ffffff44;
-    out property <color> surface:      #ffffff09;
+    // ── 主背景渐变端点 ────────────────────────────────────────
+    out property <color> bg:            ThemeState.dark ? #070a13 : #f5f5f7;
+    out property <color> bg2:           ThemeState.dark ? #0a0714 : #eeeef3;
+    // ── 侧边栏渐变端点 ────────────────────────────────────────
+    out property <color> sidebar-from:  ThemeState.dark ? #06080f : #f8f8fa;
+    out property <color> sidebar-to:    ThemeState.dark ? #05060c : #ececf0;
+    // ── 玻璃卡片渐变端点 ─────────────────────────────────────
+    out property <color> card-from:     ThemeState.dark ? #ffffff11 : #ffffffef;
+    out property <color> card-to:       ThemeState.dark ? #ffffff06 : #f5f5f7d9;
+    // ── 玻璃边框 / 输入 / 通用面 ─────────────────────────────
+    out property <color> border:        ThemeState.dark ? #ffffff20 : #0000001a;
+    out property <color> border-hi:     ThemeState.dark ? #ffffff44 : #00000033;
+    out property <color> surface:       ThemeState.dark ? #ffffff09 : #ffffffcc;
+    out property <color> surface2:      ThemeState.dark ? #ffffff05 : #0000000a;
+    out property <color> surface-focus: ThemeState.dark ? #ffffff11 : #ffffffee;
+    // ── 侧边栏竖分割线端点 ────────────────────────────────────
+    out property <color> divider-v-mid: ThemeState.dark ? #ffffff18 : #00000014;
+    // ── 规则列表行底色 ────────────────────────────────────────
+    out property <color> rule-bg:       ThemeState.dark ? #ffffff07 : #00000007;
+    // ── 代码块 ───────────────────────────────────────────────
+    out property <color> code-bg:       ThemeState.dark ? #00000088 : #0000001a;
+    out property <color> code-text:     ThemeState.dark ? #86efac   : #166534;
+    // ── 按钮禁用底色渐变端点 ─────────────────────────────────
+    out property <color> btn-dis-from:  ThemeState.dark ? #ffffff0d : #0000000f;
+    out property <color> btn-dis-to:    ThemeState.dark ? #ffffff06 : #00000007;
+    // ── NavItem 选中状态 ──────────────────────────────────────
+    out property <color> nav-sel:       ThemeState.dark ? #6b8aff18 : #0071e314;
+    out property <color> nav-sel-hi:    ThemeState.dark ? #6b8aff24 : #0071e320;
+    out property <color> nav-sel-bdr:   ThemeState.dark ? #6b8aff35 : #0071e328;
+    out property <color> nav-sel-glow:  ThemeState.dark ? #4c6ef535 : #0071e325;
+    out property <color> nav-hover:     ThemeState.dark ? #ffffff0a : #0000000a;
     // ── 主色 + 光晕 ──────────────────────────────────────────
-    out property <color> primary:      #6b8aff;
-    out property <color> primary-h:    #4f6fe8;
-    out property <color> primary-glow: #4c6ef550;
+    out property <color> primary:       ThemeState.dark ? #6b8aff   : #0071e3;
+    out property <color> primary-h:     ThemeState.dark ? #4f6fe8   : #005bbf;
+    out property <color> primary-light: ThemeState.dark ? #8ba3ff   : #1a82ff;
+    out property <color> primary-glow:  ThemeState.dark ? #4c6ef550 : #0071e330;
     // ── 文字 ─────────────────────────────────────────────────
-    out property <color> text:         #c8cad2;
-    out property <color> text-dim:     #6b7280;
-    out property <color> text-bright:  #eef0f8;
+    out property <color> text:          ThemeState.dark ? #c8cad2 : #1d1d1f;
+    out property <color> text-dim:      ThemeState.dark ? #6b7280 : #6e6e73;
+    out property <color> text-bright:   ThemeState.dark ? #eef0f8 : #000000;
     // ── 状态 + 光晕 ──────────────────────────────────────────
-    out property <color> success:      #3ecf6e;
-    out property <color> success-glow: #3ecf6e50;
-    out property <color> error:        #ff6b6b;
-    out property <color> error-glow:   #ff6b6b40;
-    out property <color> warning:      #f5a623;
+    out property <color> success:       ThemeState.dark ? #3ecf6e   : #34c759;
+    out property <color> success-glow:  ThemeState.dark ? #3ecf6e50 : #34c75930;
+    out property <color> error:         ThemeState.dark ? #ff6b6b   : #ff3b30;
+    out property <color> error-glow:    ThemeState.dark ? #ff6b6b40 : #ff3b3030;
+    out property <color> warning:       ThemeState.dark ? #f5a623   : #ff9500;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -161,13 +201,12 @@ global Palette {
 component Card inherits Rectangle {
     clip: true;
     border-radius: 20px;
-    // 顶部亮 → 底部暗，模拟光线从上方打在玻璃表面
-    background: @linear-gradient(160deg, #ffffff11, #ffffff06);
+    background: @linear-gradient(160deg, Palette.card-from, Palette.card-to);
     border-width: 1px;
     border-color: Palette.border;
     drop-shadow-blur: 28px;
     drop-shadow-offset-y: 8px;
-    drop-shadow-color: #00000070;
+    drop-shadow-color: ThemeState.dark ? #00000070 : #0000001a;
 }
 
 component PBtn inherits Rectangle {
@@ -180,11 +219,11 @@ component PBtn inherits Rectangle {
     height: small ? 28px : 36px;
     // 全胶囊圆角
     border-radius: root.height / 2;
-    background: !enabled                ? @linear-gradient(180deg, #ffffff0d, #ffffff06)
+    background: !enabled                ? @linear-gradient(180deg, Palette.btn-dis-from, Palette.btn-dis-to)
               : danger && ta.has-hover  ? @linear-gradient(180deg, #ff8585, #e03131)
               : danger                  ? @linear-gradient(180deg, #ff6b6b, #cc2929)
-              : ta.has-hover            ? @linear-gradient(180deg, #8ba3ff, #4f6fe8)
-              :                          @linear-gradient(180deg, #6b8aff, #4f6fe8);
+              : ta.has-hover            ? @linear-gradient(180deg, Palette.primary-light, Palette.primary-h)
+              :                          @linear-gradient(180deg, Palette.primary, Palette.primary-h);
     border-width: 1px;
     border-color: !enabled ? #ffffff0e : ta.has-hover ? Palette.border-hi : #ffffff2a;
     // 悬停时产生蓝/红光晕
@@ -223,7 +262,7 @@ component GhostBtn inherits Rectangle {
     border-radius: 10px;
     border-width: 1px;
     border-color: danger ? Palette.error-glow : Palette.border;
-    background: ta.has-hover ? (danger ? #ff6b6b18 : #6b8aff18) : #ffffff06;
+    background: ta.has-hover ? (danger ? #ff6b6b18 : #6b8aff18) : Palette.surface2;
 
     animate border-color { duration: 150ms; }
 
@@ -269,7 +308,7 @@ component Input inherits Rectangle {
     border-radius: 10px;
     border-width: 1px;
     border-color: le.has-focus ? Palette.border-hi : Palette.border;
-    background: le.has-focus ? #ffffff11 : Palette.surface;
+    background: le.has-focus ? Palette.surface-focus : Palette.surface;
     drop-shadow-blur: le.has-focus ? 12px : 0px;
     drop-shadow-color: Palette.primary-glow;
 
@@ -309,14 +348,14 @@ component NavItem inherits TouchArea {
         width: parent.width - 12px;
         height: parent.height - 8px;
         border-radius: 12px;
-        background: root.selected && root.has-hover ? #6b8aff24
-                  : root.selected                   ? #6b8aff18
-                  : root.has-hover                  ? #ffffff0a
+        background: root.selected && root.has-hover ? Palette.nav-sel-hi
+                  : root.selected                   ? Palette.nav-sel
+                  : root.has-hover                  ? Palette.nav-hover
                   :                                   transparent;
         border-width: root.selected ? 1px : 0px;
-        border-color: root.selected ? #6b8aff35 : transparent;
+        border-color: root.selected ? Palette.nav-sel-bdr : transparent;
         drop-shadow-blur: root.selected ? 16px : 0px;
-        drop-shadow-color: Palette.primary-glow;
+        drop-shadow-color: Palette.nav-sel-glow;
 
         animate drop-shadow-blur { duration: 250ms; easing: ease-out; }
 
@@ -1504,6 +1543,305 @@ component SettingsPage inherits VerticalLayout {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 代码块组件（深色终端风格，用于命令示例）
+// ─────────────────────────────────────────────────────────────
+
+component CodeLine inherits Rectangle {
+    in property <string> code;
+    height: 30px;
+    border-radius: 7px;
+    background: Palette.code-bg;
+    border-width: 1px;
+    border-color: Palette.border;
+    HorizontalLayout {
+        padding-left: 12px;
+        alignment: start;
+        Text {
+            text: root.code;
+            color: Palette.code-text;
+            font-size: 11px;
+            font-family: "Consolas";
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 页面 7：隧道接入（第三方应用接入）
+// ─────────────────────────────────────────────────────────────
+
+component TunnelPage inherits VerticalLayout {
+    // ── SOCKS5 状态（复用 AppWindow 已有属性）─────────────────
+    in property <bool>   socks5-enabled;
+    in property <string> socks5-port-str;
+    in property <string> socks5-exit-peer;
+
+    // ── 端口转发规则 ──────────────────────────────────────────
+    in property <[ForwardRule]> rules;
+    in property <bool>   rules-loading;
+
+    // ── 新增规则输入 ──────────────────────────────────────────
+    in-out property <string> new-name;
+    in-out property <string> new-port;
+    in-out property <string> new-host;
+    in-out property <string> new-filter;
+
+    // ── 状态消息 ──────────────────────────────────────────────
+    in property <string> status-msg;
+    in property <bool>   status-ok;
+
+    callback toggle-socks5();
+    callback refresh-rules();
+    callback add-rule();
+    callback remove-rule(string);
+
+    spacing: 0px;
+    padding: 24px;
+
+    // 标题
+    HorizontalLayout {
+        height: 36px;
+        Text {
+            text: "隧道接入";
+            color: Palette.text-bright;
+            font-size: 20px;
+            font-weight: 700;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+
+    Rectangle { height: 16px; }
+
+    // ── SOCKS5 代理卡片 ────────────────────────────────────────
+    Card {
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+
+            // 标题行 + 开关
+            HorizontalLayout {
+                Text {
+                    text: "SOCKS5 代理";
+                    color: Palette.text-bright;
+                    font-size: 15px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                PBtn {
+                    text: root.socks5-enabled ? "已启用" : "已禁用";
+                    width: 72px;
+                    small: true;
+                    clicked => { root.toggle-socks5(); }
+                }
+            }
+
+            // 状态 + 代理地址
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                VerticalLayout {
+                    alignment: center;
+                    Dot { online: root.socks5-enabled; }
+                }
+                Text {
+                    text: root.socks5-enabled
+                        ? ("代理地址：127.0.0.1:" + root.socks5-port-str
+                           + "    出口节点：" + (root.socks5-exit-peer == "" ? "（未配置，请在设置页填写）" : root.socks5-exit-peer))
+                        : "代理未启用 —— 点击右上角开关启用，并在设置页配置出口节点";
+                    color: root.socks5-enabled
+                        ? (root.socks5-exit-peer == "" ? Palette.warning : Palette.text)
+                        : Palette.text-dim;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+
+            Divider {}
+
+            // 接入方式参考（第三方应用配置示例）
+            Label { text: "让第三方应用走隧道 —— 配置 SOCKS5 代理示例："; }
+
+            CodeLine { code: "curl  --socks5-hostname  127.0.0.1:" + root.socks5-port-str + "  <URL>"; }
+            CodeLine { code: "git config --global http.proxy  socks5h://127.0.0.1:" + root.socks5-port-str; }
+            CodeLine { code: "ssh  -o ProxyCommand='nc -X 5 -x 127.0.0.1:" + root.socks5-port-str + " %h %p'  user@host"; }
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Label { text: "浏览器 / 全局：系统代理 → SOCKS5 → 127.0.0.1:" + root.socks5-port-str; }
+            }
+        }
+    }
+
+    Rectangle { height: 16px; }
+
+    // ── 端口转发规则卡片 ───────────────────────────────────────
+    Card {
+        vertical-stretch: 1;
+        VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+
+            // 标题行 + 刷新
+            HorizontalLayout {
+                Text {
+                    text: "端口转发规则";
+                    color: Palette.text-bright;
+                    font-size: 15px;
+                    font-weight: 600;
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                }
+                GhostBtn {
+                    text: root.rules-loading ? Tr.status_loading : Tr.btn_refresh;
+                    width: 64px;
+                    clicked => { root.refresh-rules(); }
+                }
+            }
+
+            Label { text: "规则让对端可以访问你本机的指定服务（如 SSH、HTTP）。对端连入后流量自动转发到目标地址。"; }
+
+            // 规则列表 —— 空态
+            if root.rules.length == 0: Rectangle {
+                height: 48px;
+                border-radius: 10px;
+                background: Palette.surface;
+                Text {
+                    text: "暂无规则，在下方添加第一条";
+                    color: Palette.text-dim;
+                    font-size: 13px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            // 规则列表 —— 有数据
+            if root.rules.length > 0: VerticalLayout {
+                spacing: 6px;
+                for rule in root.rules: Rectangle {
+                    height: 46px;
+                    border-radius: 10px;
+                    background: Palette.rule-bg;
+                    border-width: 1px;
+                    border-color: Palette.border;
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 10px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        // 规则名称
+                        Text {
+                            text: rule.name;
+                            color: Palette.text-bright;
+                            font-size: 13px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            width: 72px;
+                        }
+
+                        Text {
+                            text: "→";
+                            color: Palette.primary;
+                            font-size: 14px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+
+                        // 目标地址
+                        Text {
+                            text: rule.target-host + ":" + rule.target-port;
+                            color: Palette.text;
+                            font-size: 12px;
+                            font-family: "Consolas";
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        // 对端过滤器标签
+                        if rule.peer-id-filter != "": Rectangle {
+                            width: 88px;
+                            height: 22px;
+                            border-radius: 5px;
+                            background: #6b8aff18;
+                            border-width: 1px;
+                            border-color: #6b8aff30;
+                            Text {
+                                text: rule.peer-id-filter;
+                                color: Palette.primary;
+                                font-size: 10px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        GhostBtn {
+                            text: Tr.btn_delete;
+                            width: 48px;
+                            danger: true;
+                            clicked => { root.remove-rule(rule.rule-id); }
+                        }
+                    }
+                }
+            }
+
+            Divider {}
+
+            // 添加新规则表单
+            Text {
+                text: "添加规则";
+                color: Palette.text;
+                font-size: 13px;
+                font-weight: 600;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                height: 36px;
+                Input {
+                    horizontal-stretch: 1;
+                    placeholder: "名称（如 SSH）";
+                    value <=> root.new-name;
+                }
+                Input {
+                    width: 88px;
+                    placeholder: "目标端口";
+                    value <=> root.new-port;
+                }
+                Input {
+                    width: 130px;
+                    placeholder: "目标主机";
+                    value <=> root.new-host;
+                }
+                Input {
+                    width: 120px;
+                    placeholder: "限制对端（选填）";
+                    value <=> root.new-filter;
+                }
+                PBtn {
+                    text: Tr.btn_add;
+                    width: 60px;
+                    enabled: root.new-name != "" && root.new-port != "";
+                    clicked => { root.add-rule(); }
+                }
+            }
+
+            if root.status-msg != "": StatusMsg {
+                msg: root.status-msg;
+                ok: root.status-ok;
+            }
+        }
+    }
+
+    Rectangle { vertical-stretch: 1; }
+}
+
+// ─────────────────────────────────────────────────────────────
 // 主窗口
 // ─────────────────────────────────────────────────────────────
 
@@ -1511,8 +1849,7 @@ export component AppWindow inherits Window {
     title: "NAT Client";
     preferred-width: 960px;
     preferred-height: 640px;
-    // 深色双色调渐变背景，让玻璃层有颜色互动感
-    background: @linear-gradient(145deg, #070a13, #0a0714);
+    background: @linear-gradient(145deg, Palette.bg, Palette.bg2);
 
     // ── 状态属性 ──────────────────────────────────────────────
     in property <bool> online;
@@ -1530,6 +1867,16 @@ export component AppWindow inherits Window {
     in property <[ActiveConn]> connections;
     in property <[LanPeer]> lan-peers;
     in property <[BoundDevice]> devices;
+    // ── 隧道接入 ──────────────────────────────────────────────
+    in property <[ForwardRule]> tunnel-rules;
+    in property <bool>   tunnel-rules-loading;
+    in property <string> tunnel-status-msg;
+    in property <bool>   tunnel-status-ok;
+    in-out property <string> tunnel-new-name;
+    in-out property <string> tunnel-new-port;
+    in-out property <string> tunnel-new-host: "127.0.0.1";
+    in-out property <string> tunnel-new-filter;
+
     in property <bool> connecting;
     in property <bool> discovering;
     in property <bool> devices-loading;
@@ -1584,6 +1931,10 @@ export component AppWindow inherits Window {
     callback set-language(string);
     callback toggle-socks5();
     callback save-proxy-settings();
+    callback do-add-rule();
+    callback do-remove-rule(string);
+    callback do-refresh-rules();
+    callback do-toggle-theme();
 
     // ── 布局 ──────────────────────────────────────────────────
     HorizontalLayout {
@@ -1591,8 +1942,7 @@ export component AppWindow inherits Window {
         // ── 侧边栏 ────────────────────────────────────────────
         Rectangle {
             width: 200px;
-            // 比主背景更暗，形成深度层次
-            background: @linear-gradient(180deg, #06080f, #05060c);
+            background: @linear-gradient(180deg, Palette.sidebar-from, Palette.sidebar-to);
 
             VerticalLayout {
                 padding: 12px;
@@ -1703,6 +2053,16 @@ export component AppWindow inherits Window {
                     }
                 }
 
+                NavItem {
+                    icon: "⇒";
+                    label: "隧道接入";
+                    selected: page == 6;
+                    clicked => {
+                        root.page = 6;
+                        root.do-refresh-rules();
+                    }
+                }
+
                 Rectangle {
                     vertical-stretch: 1;
                 }
@@ -1711,17 +2071,14 @@ export component AppWindow inherits Window {
 
                 // 底部状态
                 HorizontalLayout {
-                    height: 40px;
+                    height: 36px;
                     padding-left: 16px;
                     spacing: 8px;
                     alignment: start;
                     VerticalLayout {
                         alignment: center;
-                        Dot {
-                            online: root.online;
-                        }
+                        Dot { online: root.online; }
                     }
-
                     Text {
                         text: root.online ? Tr.status_online : Tr.status_offline;
                         color: root.online ? Palette.success : Palette.text-dim;
@@ -1730,13 +2087,44 @@ export component AppWindow inherits Window {
                         vertical-alignment: center;
                     }
                 }
+
+                // 主题切换按钮
+                theme-toggle := TouchArea {
+                    height: 32px;
+                    mouse-cursor: pointer;
+                    clicked => { root.do-toggle-theme(); }
+
+                    Rectangle {
+                        border-radius: 8px;
+                        background: theme-toggle.has-hover ? Palette.nav-hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 16px;
+                            spacing: 8px;
+                            alignment: start;
+                            Text {
+                                text: ThemeState.dark ? "☀" : "◑";
+                                font-family: "Segoe UI Symbol";
+                                font-size: 13px;
+                                color: Palette.text-dim;
+                                vertical-alignment: center;
+                                width: 18px;
+                            }
+                            Text {
+                                text: ThemeState.dark ? "浅色模式" : "深色模式";
+                                font-size: 11px;
+                                color: Palette.text-dim;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
             }
         }
 
         // ── 侧边栏右侧玻璃分割线 ─────────────────────────────
         Rectangle {
             width: 1px;
-            background: @linear-gradient(180deg, #ffffff00, #ffffff18, #ffffff18, #ffffff00);
+            background: @linear-gradient(180deg, transparent, Palette.divider-v-mid, Palette.divider-v-mid, transparent);
         }
 
         // ── 内容区 ────────────────────────────────────────────
@@ -1873,6 +2261,26 @@ export component AppWindow inherits Window {
                 save-proxy-settings => {
                     root.save-proxy-settings();
                 }
+            }
+
+            if page == 6: TunnelPage {
+                width: parent.width;
+                height: parent.height;
+                socks5-enabled <=> root.socks5-enabled;
+                socks5-port-str <=> root.socks5-port-str;
+                socks5-exit-peer <=> root.socks5-exit-peer;
+                rules <=> root.tunnel-rules;
+                rules-loading <=> root.tunnel-rules-loading;
+                new-name <=> root.tunnel-new-name;
+                new-port <=> root.tunnel-new-port;
+                new-host <=> root.tunnel-new-host;
+                new-filter <=> root.tunnel-new-filter;
+                status-msg <=> root.tunnel-status-msg;
+                status-ok <=> root.tunnel-status-ok;
+                toggle-socks5 => { root.toggle-socks5(); }
+                refresh-rules => { root.do-refresh-rules(); }
+                add-rule => { root.do-add-rule(); }
+                remove-rule(id) => { root.do-remove-rule(id); }
             }
         }
     }

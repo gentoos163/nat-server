@@ -44,6 +44,11 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
     // 初始化配置显示值
     init_config_fields(&window);
 
+    // 初始化主题
+    window
+        .global::<ThemeState>()
+        .set_dark(ClientConfig::get_dark_mode());
+
     // 应用当前语言翻译
     let lang = ClientConfig::get_language();
     apply_translations(&window, &lang);
@@ -311,6 +316,11 @@ fn poll_and_update(w: &AppWindow, ipc_port: u16, tray: Option<Arc<Mutex<TrayMana
         false
     };
 
+    // ── 转发规则（仅在隧道接入页时拉取）─────────────────────────────────────
+    if w.get_page() == 6 {
+        refresh_rules(w, ipc_port);
+    }
+
     // ── 订阅信息（仅登录时拉取）────────────────────────────────────────────────
     if logged_in {
         let sub_resp = blocking_ipc(ipc_port, r#"{"cmd":"auth_subscription"}"#);
@@ -329,6 +339,32 @@ fn poll_and_update(w: &AppWindow, ipc_port: u16, tray: Option<Arc<Mutex<TrayMana
                 };
                 w.set_sub_expires(exp_display.into());
             }
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 转发规则列表刷新
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn refresh_rules(w: &AppWindow, ipc_port: u16) {
+    w.set_tunnel_rules_loading(true);
+    let resp = blocking_ipc(ipc_port, r#"{"cmd":"list_rules"}"#);
+    w.set_tunnel_rules_loading(false);
+
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+        if let Some(arr) = v["rules"].as_array() {
+            let items: Vec<ForwardRule> = arr
+                .iter()
+                .map(|r| ForwardRule {
+                    rule_id:        r["rule_id"].as_str().unwrap_or("").into(),
+                    name:           r["name"].as_str().unwrap_or("").into(),
+                    target_host:    r["target_host"].as_str().unwrap_or("127.0.0.1").into(),
+                    target_port:    r["target_port"].as_u64().unwrap_or(0).to_string().into(),
+                    peer_id_filter: r["peer_id_filter"].as_str().unwrap_or("").into(),
+                })
+                .collect();
+            w.set_tunnel_rules(ModelRc::new(VecModel::from(items)));
         }
     }
 }
@@ -701,12 +737,98 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             w.set_settings_status("✅ 代理设置已保存（重启后生效）".into());
             log::info!("[gui] 代理设置已保存: exit_peer={} port={}", exit_peer, port);
 
-            // 通过 IPC 保存设置
             let cmd = format!(
                 r#"{{"cmd":"proxy_save","port":{},"exit_peer":"{}"}}"#,
                 port, exit_peer
             );
             blocking_ipc(ipc_port, &cmd);
+        });
+    }
+
+    // ── 刷新转发规则 ─────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_refresh_rules(move || {
+            if let Some(w) = win.upgrade() {
+                refresh_rules(&w, ipc_port);
+            }
+        });
+    }
+
+    // ── 添加转发规则 ─────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_add_rule(move || {
+            let Some(w) = win.upgrade() else { return };
+            let name        = w.get_tunnel_new_name().to_string();
+            let port_str    = w.get_tunnel_new_port().to_string();
+            let target_host = w.get_tunnel_new_host().to_string();
+            let peer_filter = w.get_tunnel_new_filter().to_string();
+
+            let target_port: u16 = match port_str.parse() {
+                Ok(p) => p,
+                Err(_) => {
+                    w.set_tunnel_status_msg("端口必须为 1-65535 的整数".into());
+                    w.set_tunnel_status_ok(false);
+                    return;
+                }
+            };
+
+            let cmd = serde_json::json!({
+                "cmd": "add_rule",
+                "rule_name": name,
+                "target_port": target_port,
+                "target_host": target_host,
+                "peer_id_filter": peer_filter,
+            }).to_string();
+
+            let resp = blocking_ipc(ipc_port, &cmd);
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                if v["ok"].as_bool().unwrap_or(false) {
+                    w.set_tunnel_status_msg(
+                        format!("✅ 规则「{}」已添加", w.get_tunnel_new_name()).into()
+                    );
+                    w.set_tunnel_status_ok(true);
+                    // 清空输入
+                    w.set_tunnel_new_name("".into());
+                    w.set_tunnel_new_port("".into());
+                    w.set_tunnel_new_filter("".into());
+                    refresh_rules(&w, ipc_port);
+                } else {
+                    let err = v["error"].as_str().unwrap_or("添加失败");
+                    w.set_tunnel_status_msg(format!("❌ {}", err).into());
+                    w.set_tunnel_status_ok(false);
+                }
+            }
+        });
+    }
+
+    // ── 删除转发规则 ─────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_remove_rule(move |rule_id| {
+            let cmd = serde_json::json!({
+                "cmd": "remove_rule",
+                "rule_id": rule_id.to_string(),
+            }).to_string();
+            blocking_ipc(ipc_port, &cmd);
+            if let Some(w) = win.upgrade() {
+                refresh_rules(&w, ipc_port);
+                w.set_tunnel_status_msg("规则已删除".into());
+                w.set_tunnel_status_ok(true);
+            }
+        });
+    }
+
+    // ── 主题切换 ─────────────────────────────────────────────────────────────
+    {
+        let win = w.as_weak();
+        w.on_do_toggle_theme(move || {
+            let Some(w) = win.upgrade() else { return };
+            let dark = w.global::<ThemeState>().get_dark();
+            let new_dark = !dark;
+            w.global::<ThemeState>().set_dark(new_dark);
+            ClientConfig::set_dark_mode(new_dark);
         });
     }
 }
