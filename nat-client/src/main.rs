@@ -27,6 +27,7 @@ mod lan;
 mod port_forward;
 mod rendezvous_mediator;
 mod socks5;
+#[cfg(feature = "gui")]
 mod ui;
 
 use clap::{Parser, Subcommand};
@@ -210,41 +211,51 @@ fn main() {
             log_level,
             rendezvous_protocol,
         } => {
-            init_logger(&log_level);
-            log::info!(
-                "=== nat-client v{} GUI 模式启动 ===",
-                env!("CARGO_PKG_VERSION")
-            );
-
-            // 初始化配置
-            config::init(
-                Some(server.clone()),
-                relay.clone(),
-                id,
-                Some(ipc_port),
-                rendezvous_protocol,
-            )
-            .expect("配置初始化失败");
-
-            // 启动 tokio 后台运行时（多线程，专用于异步服务）
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(4)
-                .enable_all()
-                .build()
-                .expect("tokio runtime 创建失败");
-
-            start_background_services(&rt, ipc_port);
-            log::info!("[main] 后台服务已启动，IPC 端口 {}", ipc_port);
-
-            // 在主线程运行 Slint GUI + 系统托盘（阻塞直到窗口关闭）
-            match ui::app::run_gui(ipc_port) {
-                Ok(_) => log::info!("[gui] 窗口已关闭"),
-                Err(e) => log::error!("[gui] 窗口运行失败: {}", e),
+            #[cfg(not(feature = "gui"))]
+            {
+                let _ = (server, relay, id, ipc_port, log_level, rendezvous_protocol);
+                eprintln!("错误：此二进制未编译 GUI 支持。");
+                eprintln!("请使用 `cargo build --features gui` 重新构建，或直接运行 `nat-client daemon`。");
+                std::process::exit(1);
             }
+            #[cfg(feature = "gui")]
+            {
+                init_logger(&log_level);
+                log::info!(
+                    "=== nat-client v{} GUI 模式启动 ===",
+                    env!("CARGO_PKG_VERSION")
+                );
 
-            // GUI 退出后关闭 tokio
-            rt.shutdown_timeout(std::time::Duration::from_secs(2));
-            log::info!("[main] 程序已退出");
+                // 初始化配置
+                config::init(
+                    Some(server.clone()),
+                    relay.clone(),
+                    id,
+                    Some(ipc_port),
+                    rendezvous_protocol,
+                )
+                .expect("配置初始化失败");
+
+                // 启动 tokio 后台运行时（多线程，专用于异步服务）
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(4)
+                    .enable_all()
+                    .build()
+                    .expect("tokio runtime 创建失败");
+
+                start_background_services(&rt, ipc_port);
+                log::info!("[main] 后台服务已启动，IPC 端口 {}", ipc_port);
+
+                // 在主线程运行 Slint GUI + 系统托盘（阻塞直到窗口关闭）
+                match ui::app::run_gui(ipc_port) {
+                    Ok(_) => log::info!("[gui] 窗口已关闭"),
+                    Err(e) => log::error!("[gui] 窗口运行失败: {}", e),
+                }
+
+                // GUI 退出后关闭 tokio
+                rt.shutdown_timeout(std::time::Duration::from_secs(2));
+                log::info!("[main] 程序已退出");
+            }
         }
 
         // ── 守护进程模式：纯 tokio，无 GUI ───────────────────────────────────

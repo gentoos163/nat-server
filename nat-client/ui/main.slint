@@ -287,6 +287,8 @@ component NavItem inherits TouchArea {
                     text: root.icon;
                     color: root.selected ? Palette.primary : Palette.text-dim;
                     font-size: 18px;
+                    // Windows 的 femtovg 不自动回退系统符号字体；macOS 上找不到此字体时自动回退无影响
+                    font-family: "Segoe UI Symbol";
                     vertical-alignment: center;
                     width: 22px;
                 }

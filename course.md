@@ -185,3 +185,30 @@ export BOOTSTRAP_ADMIN_USERNAME=你的管理员用户名
 日志显示服务器在监听 21115-21118 和 8080，请确保你的防火墙（如 AWS 安全组、宝塔面板、ufw 等）已经放行了这些端口的 TCP 和 UDP 流量。
 
 总结：服务器本身运行良好，报错是由于客户端设备身份校验未通过引起的，通常通过重新登录客户端或在管理后台检查设备授权即可解决。
+
+
+两种模式都编译通过。总结修改内容：
+
+---
+
+**问题1：Windows 图标乱码**
+
+根因：Slint 的 femtovg 渲染器在 Windows 上不会自动回退到含这些 Unicode 符号（`⊞`、`⇄`、`◉`、`☺`、`▣`、`⚙`）的 "Segoe UI Symbol" 系统字体，而 macOS 的系统字体本身就覆盖了这些字形。
+
+修复：[main.slint:288-290](nat-client/ui/main.slint) 的 NavItem 图标 `Text` 元素添加了 `font-family: "Segoe UI Symbol"`。Windows 上会找到该字体并正确渲染；macOS 找不到该字体会透明地回退到系统字体，不影响显示。
+
+---
+
+**问题2：daemon 模式不加载 GUI**
+
+三处改动：
+
+1. **[Cargo.toml](nat-client/Cargo.toml)**：新增 `[features]`，默认包含 `gui`；`slint`、`tray-icon`、`image`（运行时）和 `slint-build`（构建时）均改为 `optional = true`，并挂到 `gui` feature 下。
+
+2. **[build.rs](nat-client/build.rs)**：用 `#[cfg(feature = "gui")]` 包裹 `slint_build::compile`，无 GUI feature 时跳过。
+
+3. **[src/main.rs](nat-client/src/main.rs)**：`mod ui` 加 `#[cfg(feature = "gui")]`；`Commands::Gui` 分支用 `#[cfg(feature = "gui")] / #[cfg(not(feature = "gui"))]` 分别处理有/无 GUI 的情况——无 GUI 时打印友好错误并退出。
+
+**用法：**
+- 默认构建（含 GUI）：`cargo build`
+- 纯 daemon 构建（去掉 slint 依赖，编译更快）：`cargo build --no-default-features`

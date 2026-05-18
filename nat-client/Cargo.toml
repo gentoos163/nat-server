@@ -10,6 +10,12 @@ build = "build.rs"
 name = "nat-client"
 path = "src/main.rs"
 
+# ── Features ──────────────────────────────────────────────────────────────────
+# 默认启用 GUI；daemon/server 场景可用 --no-default-features 关闭
+[features]
+default = ["gui"]
+gui = ["dep:slint", "dep:tray-icon", "dep:image", "dep:slint-build"]
+
 [dependencies]
 # 核心通信库
 core_common = { path = "../libs/core-common" }
@@ -36,16 +42,10 @@ reqwest      = { version = "0.11", features = ["json", "blocking"] }
 icu_provider = { version = "2.2", features = ["logging"] }
 chrono       = { version = "0.4", features = ["serde"] }
 
-# ── GUI 相关 ──────────────────────────────────────────────────────────────────
-# Slint GUI 框架
-slint = { version = "1.16",default-features = false, features = ["compat-1-2","backend-winit","renderer-femtovg","std"] }
-
-# 系统托盘
-tray-icon = "0.24"
-
-# 托盘图标图像生成（纯 Rust，无系统库依赖）
-image = { version = "0.25", default-features = false, features = ["png"] }
+# ── GUI 相关（仅 gui feature 启用时编译）─────────────────────────────────────
+slint     = { version = "1.16", default-features = false, features = ["compat-1-2","backend-winit","renderer-femtovg","std"], optional = true }
+tray-icon = { version = "0.24", optional = true }
+image     = { version = "0.25", default-features = false, features = ["png"], optional = true }
 
 [build-dependencies]
-# Slint .slint 文件编译器
-slint-build = "1.16"
+slint-build = { version = "1.16", optional = true }
