@@ -192,6 +192,11 @@ global Palette {
     out property <color> error:         ThemeState.dark ? #ff6b6b   : #ff3b30;
     out property <color> error-glow:    ThemeState.dark ? #ff6b6b40 : #ff3b3030;
     out property <color> warning:       ThemeState.dark ? #f5a623   : #ff9500;
+    // ── 液态玻璃高光 + 背景色球 ─────────────────────────────────
+    out property <color> specular:     ThemeState.dark ? #ffffff1e : #ffffff70;
+    out property <color> orb-a:        ThemeState.dark ? #4c6ef52a : #0071e316;
+    out property <color> orb-b:        ThemeState.dark ? #7c3aed24 : #5856d614;
+    out property <color> orb-c:        ThemeState.dark ? #0ea5e91c : #34aadc10;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -207,6 +212,19 @@ component Card inherits Rectangle {
     drop-shadow-blur: 28px;
     drop-shadow-offset-y: 8px;
     drop-shadow-color: ThemeState.dark ? #00000070 : #0000001a;
+
+    // 用户内容先渲染（在下层）
+    @children
+
+    // 镜面高光层——叠加在内容之上，模拟玻璃折射
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: 54px;
+        border-radius: 18px;
+        background: @linear-gradient(180deg, Palette.specular, #00000000);
+    }
 }
 
 component PBtn inherits Rectangle {
@@ -2128,9 +2146,32 @@ export component AppWindow inherits Window {
         }
 
         // ── 内容区 ────────────────────────────────────────────
-        Rectangle {
+        content-area := Rectangle {
             horizontal-stretch: 1;
             background: transparent;
+
+            // 背景色球——让玻璃卡片有"颜色可采样"，模拟液态玻璃折射效果
+            Rectangle {
+                x: 20px;
+                y: 30px;
+                width: 380px;
+                height: 380px;
+                background: @radial-gradient(circle, Palette.orb-a, #00000000);
+            }
+            Rectangle {
+                x: content-area.width - 340px;
+                y: 10px;
+                width: 340px;
+                height: 340px;
+                background: @radial-gradient(circle, Palette.orb-b, #00000000);
+            }
+            Rectangle {
+                x: content-area.width - 200px;
+                y: content-area.height - 240px;
+                width: 300px;
+                height: 300px;
+                background: @radial-gradient(circle, Palette.orb-c, #00000000);
+            }
 
             if page == 0: DashboardPage {
                 width: parent.width;
