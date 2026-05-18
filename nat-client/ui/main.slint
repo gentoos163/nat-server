@@ -130,19 +130,28 @@ export struct BoundDevice {
 // ─────────────────────────────────────────────────────────────
 
 global Palette {
-    out property <color> bg:          #1a1b1e;
-    out property <color> sidebar:     #141517;
-    out property <color> card:        #25262b;
-    out property <color> border:      #373a40;
-    out property <color> primary:     #4c6ef5;
-    out property <color> primary-h:   #364fc7;
-    out property <color> text:        #c1c2c5;
-    out property <color> text-dim:    #868e96;
-    out property <color> text-bright: #f1f3f5;
-    out property <color> success:     #40c057;
-    out property <color> error:       #fa5252;
-    out property <color> warning:     #fab005;
-    out property <color> surface:     #2c2e33;
+    // ── 深色玻璃背景 ─────────────────────────────────────────
+    out property <color> bg:           #070a13;
+    out property <color> sidebar:      #05070d;
+    // ── 玻璃层 ───────────────────────────────────────────────
+    out property <color> card:         #ffffff0c;
+    out property <color> border:       #ffffff20;
+    out property <color> border-hi:    #ffffff44;
+    out property <color> surface:      #ffffff09;
+    // ── 主色 + 光晕 ──────────────────────────────────────────
+    out property <color> primary:      #6b8aff;
+    out property <color> primary-h:    #4f6fe8;
+    out property <color> primary-glow: #4c6ef550;
+    // ── 文字 ─────────────────────────────────────────────────
+    out property <color> text:         #c8cad2;
+    out property <color> text-dim:     #6b7280;
+    out property <color> text-bright:  #eef0f8;
+    // ── 状态 + 光晕 ──────────────────────────────────────────
+    out property <color> success:      #3ecf6e;
+    out property <color> success-glow: #3ecf6e50;
+    out property <color> error:        #ff6b6b;
+    out property <color> error-glow:   #ff6b6b40;
+    out property <color> warning:      #f5a623;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -150,12 +159,15 @@ global Palette {
 // ─────────────────────────────────────────────────────────────
 
 component Card inherits Rectangle {
-    background: Palette.card;
-    border-radius: 10px;
-    drop-shadow-blur: 8px;
-    drop-shadow-offset-y: 2px;
-    drop-shadow-color: #00000055;
     clip: true;
+    border-radius: 20px;
+    // 顶部亮 → 底部暗，模拟光线从上方打在玻璃表面
+    background: @linear-gradient(160deg, #ffffff11, #ffffff06);
+    border-width: 1px;
+    border-color: Palette.border;
+    drop-shadow-blur: 28px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: #00000070;
 }
 
 component PBtn inherits Rectangle {
@@ -165,15 +177,32 @@ component PBtn inherits Rectangle {
     in property <bool> small:   false;
     callback clicked;
 
-    height: small ? 30px : 36px;
-    border-radius: 6px;
-    background: !enabled ? Palette.border : danger && ta.has-hover ? #c0392b : danger ? Palette.error : ta.has-hover ? Palette.primary-h : Palette.primary;
+    height: small ? 28px : 36px;
+    // 全胶囊圆角
+    border-radius: root.height / 2;
+    background: !enabled                ? @linear-gradient(180deg, #ffffff0d, #ffffff06)
+              : danger && ta.has-hover  ? @linear-gradient(180deg, #ff8585, #e03131)
+              : danger                  ? @linear-gradient(180deg, #ff6b6b, #cc2929)
+              : ta.has-hover            ? @linear-gradient(180deg, #8ba3ff, #4f6fe8)
+              :                          @linear-gradient(180deg, #6b8aff, #4f6fe8);
+    border-width: 1px;
+    border-color: !enabled ? #ffffff0e : ta.has-hover ? Palette.border-hi : #ffffff2a;
+    // 悬停时产生蓝/红光晕
+    drop-shadow-blur:    ta.has-hover && enabled ? 20px : 5px;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-color: !enabled ? #00000000
+                     : danger   ? Palette.error-glow
+                     :            Palette.primary-glow;
+
+    animate drop-shadow-blur  { duration: 220ms; easing: ease-out; }
+    animate border-color      { duration: 150ms; }
 
     Text {
         text: root.text;
-        color: root.enabled ? white : Palette.text-dim;
-        font-size: root.small ? 12px : 14px;
+        color: root.enabled ? Palette.text-bright : Palette.text-dim;
+        font-size: root.small ? 11px : 13px;
         font-weight: 600;
+        letter-spacing: 0.3px;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -181,9 +210,7 @@ component PBtn inherits Rectangle {
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
-        clicked => {
-            root.clicked();
-        }
+        clicked => { root.clicked(); }
     }
 }
 
@@ -193,35 +220,39 @@ component GhostBtn inherits Rectangle {
     callback clicked;
 
     height: 32px;
-    border-radius: 6px;
+    border-radius: 10px;
     border-width: 1px;
-    border-color: danger ? Palette.error : Palette.border;
-    background: ta.has-hover ? (danger ? #fa525220 : #4c6ef520) : transparent;
+    border-color: danger ? Palette.error-glow : Palette.border;
+    background: ta.has-hover ? (danger ? #ff6b6b18 : #6b8aff18) : #ffffff06;
+
+    animate border-color { duration: 150ms; }
 
     Text {
         text: root.text;
         color: root.danger ? Palette.error : Palette.text;
-        font-size: 13px;
+        font-size: 12px;
+        font-weight: 500;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
 
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => {
-            root.clicked();
-        }
+        clicked => { root.clicked(); }
     }
 }
 
-// 状态圆点（用 Rectangle，不设 vertical-alignment）
+// 状态圆点（带光晕，模拟发光 LED）
 component Dot inherits Rectangle {
     in property <bool> online;
     width: 9px;
     height: 9px;
     border-radius: 5px;
     background: online ? Palette.success : Palette.error;
-    animate background { duration: 600ms; }
+    drop-shadow-blur: online ? 10px : 4px;
+    drop-shadow-color: online ? Palette.success-glow : Palette.error-glow;
+    animate background       { duration: 600ms; }
+    animate drop-shadow-blur { duration: 600ms; }
 }
 
 component Label inherits Text {
@@ -235,10 +266,15 @@ component Input inherits Rectangle {
     in property <bool> password: false;
     in property <bool> enabled:  true;
     height: 36px;
-    border-radius: 6px;
+    border-radius: 10px;
     border-width: 1px;
-    border-color: le.has-focus ? Palette.primary : Palette.border;
-    background: Palette.surface;
+    border-color: le.has-focus ? Palette.border-hi : Palette.border;
+    background: le.has-focus ? #ffffff11 : Palette.surface;
+    drop-shadow-blur: le.has-focus ? 12px : 0px;
+    drop-shadow-color: Palette.primary-glow;
+
+    animate border-color     { duration: 180ms; }
+    animate drop-shadow-blur { duration: 180ms; }
 
     le := LineEdit {
         x: 10px;
@@ -248,58 +284,67 @@ component Input inherits Rectangle {
         placeholder-text: root.placeholder;
         input-type: root.password ? InputType.password : InputType.text;
         enabled: root.enabled;
-        font-size: 14px;
+        font-size: 13px;
     }
 }
 
 component Divider inherits Rectangle {
     height: 1px;
-    background: Palette.border;
+    // 两端渐隐，避免硬边界
+    background: @linear-gradient(90deg, #ffffff00, Palette.border, #ffffff00);
 }
 
-// 导航项（用嵌套 Rectangle 模拟左侧高亮条）
+// 导航项（液态玻璃胶囊高亮）
 component NavItem inherits TouchArea {
     in property <string> icon;
     in property <string> label;
     in property <bool> selected;
-    height: 46px;
+    height: 44px;
     mouse-cursor: pointer;
 
-    HorizontalLayout {
-        // 左侧 3px 高亮条
-        Rectangle {
-            width: 3px;
-            background: root.selected ? Palette.primary : transparent;
-        }
+    // 玻璃胶囊背景
+    Rectangle {
+        x: 6px;
+        y: 4px;
+        width: parent.width - 12px;
+        height: parent.height - 8px;
+        border-radius: 12px;
+        background: root.selected && root.has-hover ? #6b8aff24
+                  : root.selected                   ? #6b8aff18
+                  : root.has-hover                  ? #ffffff0a
+                  :                                   transparent;
+        border-width: root.selected ? 1px : 0px;
+        border-color: root.selected ? #6b8aff35 : transparent;
+        drop-shadow-blur: root.selected ? 16px : 0px;
+        drop-shadow-color: Palette.primary-glow;
 
-        Rectangle {
-            horizontal-stretch: 1;
-            border-radius: 6px;
-            background: root.has-hover ? (root.selected ? #4c6ef530 : #ffffff10) : (root.selected ? #4c6ef520 : transparent);
+        animate drop-shadow-blur { duration: 250ms; easing: ease-out; }
 
-            HorizontalLayout {
-                padding-left: 13px;
-                padding-right: 8px;
-                spacing: 10px;
-                alignment: start;
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 8px;
+            spacing: 10px;
+            alignment: start;
 
-                Text {
-                    text: root.icon;
-                    color: root.selected ? Palette.primary : Palette.text-dim;
-                    font-size: 18px;
-                    // Windows 的 femtovg 不自动回退系统符号字体；macOS 上找不到此字体时自动回退无影响
-                    font-family: "Segoe UI Symbol";
-                    vertical-alignment: center;
-                    width: 22px;
-                }
+            Text {
+                text: root.icon;
+                color: root.selected ? Palette.primary : Palette.text-dim;
+                font-size: 17px;
+                // Windows 的 femtovg 不自动回退系统符号字体；macOS 上找不到此字体时自动回退无影响
+                font-family: "Segoe UI Symbol";
+                vertical-alignment: center;
+                width: 22px;
+                animate color { duration: 200ms; }
+            }
 
-                Text {
-                    text: root.label;
-                    color: root.selected ? Palette.text-bright : Palette.text-dim;
-                    font-size: 14px;
-                    font-weight: root.selected ? 700 : 400;
-                    vertical-alignment: center;
-                }
+            Text {
+                text: root.label;
+                color: root.selected ? Palette.text-bright : Palette.text-dim;
+                font-size: 13px;
+                font-weight: root.selected ? 600 : 400;
+                letter-spacing: root.selected ? 0.3px : 0px;
+                vertical-alignment: center;
+                animate color { duration: 200ms; }
             }
         }
     }
@@ -1466,7 +1511,8 @@ export component AppWindow inherits Window {
     title: "NAT Client";
     preferred-width: 960px;
     preferred-height: 640px;
-    background: Palette.bg;
+    // 深色双色调渐变背景，让玻璃层有颜色互动感
+    background: @linear-gradient(145deg, #070a13, #0a0714);
 
     // ── 状态属性 ──────────────────────────────────────────────
     in property <bool> online;
@@ -1545,7 +1591,8 @@ export component AppWindow inherits Window {
         // ── 侧边栏 ────────────────────────────────────────────
         Rectangle {
             width: 200px;
-            background: Palette.sidebar;
+            // 比主背景更暗，形成深度层次
+            background: @linear-gradient(180deg, #06080f, #05060c);
 
             VerticalLayout {
                 padding: 12px;
@@ -1553,19 +1600,24 @@ export component AppWindow inherits Window {
 
                 // Logo
                 HorizontalLayout {
-                    height: 56px;
+                    height: 60px;
                     padding-left: 12px;
                     spacing: 10px;
                     alignment: start;
+                    // 玻璃 Logo 图标（渐变 + 光晕）
                     Rectangle {
-                        width: 32px;
-                        height: 32px;
-                        border-radius: 8px;
-                        background: Palette.primary;
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 10px;
+                        background: @linear-gradient(135deg, #8ba3ff, #4c6ef5);
+                        border-width: 1px;
+                        border-color: #8ba3ff55;
+                        drop-shadow-blur: 16px;
+                        drop-shadow-color: #4c6ef560;
                         Text {
                             text: "N";
                             color: white;
-                            font-size: 18px;
+                            font-size: 19px;
                             font-weight: 900;
                             horizontal-alignment: center;
                             vertical-alignment: center;
@@ -1578,14 +1630,15 @@ export component AppWindow inherits Window {
                         Text {
                             text: "NAT Client";
                             color: Palette.text-bright;
-                            font-size: 14px;
+                            font-size: 13px;
                             font-weight: 700;
+                            letter-spacing: 0.5px;
                         }
 
                         Text {
                             text: "v0.1.0";
                             color: Palette.text-dim;
-                            font-size: 11px;
+                            font-size: 10px;
                         }
                     }
                 }
@@ -1680,10 +1733,16 @@ export component AppWindow inherits Window {
             }
         }
 
+        // ── 侧边栏右侧玻璃分割线 ─────────────────────────────
+        Rectangle {
+            width: 1px;
+            background: @linear-gradient(180deg, #ffffff00, #ffffff18, #ffffff18, #ffffff00);
+        }
+
         // ── 内容区 ────────────────────────────────────────────
         Rectangle {
             horizontal-stretch: 1;
-            background: Palette.bg;
+            background: transparent;
 
             if page == 0: DashboardPage {
                 width: parent.width;
