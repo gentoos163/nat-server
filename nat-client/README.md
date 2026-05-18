@@ -255,12 +255,12 @@ nat-client (A)                       nat-client (B) [同一局域网]
 **快速配置**：
 
 ```bash
-# 1. 扫描本机正在监听的服务
-nat-client scan-services
-# 端口     服务名           可添加规则命令
-# 22       SSH              nat-client add-rule -n SSH -t 22
-# 80       HTTP             nat-client add-rule -n HTTP -t 80
-# 3306     MySQL            nat-client add-rule -n MySQL -t 3306
+# 1. 扫描本机正在监听的服务（--all 扫全部端口并显示进程名）
+nat-client scan-services --all
+# 端口    绑定地址           进程名                 PID      建议添加规则
+# 22      0.0.0.0            sshd                   1234     nat-client add-rule -n SSH -t 22
+# 3306    127.0.0.1          mysqld                 5678     nat-client add-rule -n MySQL -t 3306
+# 8080    0.0.0.0            node                   9012     nat-client add-rule -n HTTP-Alt -t 8080
 
 # 2. 添加规则（任意对端均可访问本机 SSH）
 nat-client add-rule -n SSH -t 22
@@ -886,17 +886,48 @@ nat-client restart
 #### `scan-services` — 扫描本机监听的服务
 
 ```bash
+# 快速扫描（默认）：对 20 个知名端口并发 TCP 探测，约 200ms
 nat-client scan-services
+
+# 全量扫描：扫描所有监听端口，并附带进程名、PID、绑定地址
+nat-client scan-services --all
 ```
 
-对 20 个常见端口并发 TCP 探测（200 ms 超时），输出格式：
+**快速扫描输出**（`-a` 省略时）：
 
 ```
-端口     服务名           可添加规则命令
+端口     服务名           建议添加规则
+────────────────────────────────────────────────────────────
 22       SSH              nat-client add-rule -n SSH -t 22
-80       HTTP             nat-client add-rule -n HTTP -t 80
 3306     MySQL            nat-client add-rule -n MySQL -t 3306
+
+提示：使用 --all 参数可扫描所有端口并显示进程信息
 ```
+
+**全量扫描输出**（`--all`）：
+
+```
+端口    绑定地址           进程名                 PID      建议添加规则
+────────────────────────────────────────────────────────────────────────────────
+22      0.0.0.0            sshd                   1234     nat-client add-rule -n SSH -t 22
+2222    127.0.0.1          sshd                   1234     nat-client add-rule -n Port2222 -t 2222
+3306    127.0.0.1          mysqld                 5678     nat-client add-rule -n MySQL -t 3306
+8080    0.0.0.0            node                   9012     nat-client add-rule -n HTTP-Alt -t 8080
+```
+
+| 列 | 说明 |
+|----|------|
+| 绑定地址 | `0.0.0.0` 表示监听所有网卡；`127.0.0.1` 表示仅本机可访问 |
+| 进程名 | 占用该端口的进程（Linux 读 `/proc`，Windows 用 `tasklist`，macOS 用 `lsof`） |
+| PID | 进程 ID |
+
+**平台实现**：
+
+| 平台 | 数据来源 | 获取进程名 |
+|------|---------|-----------|
+| Linux | `/proc/net/tcp` + `/proc/net/tcp6` | `/proc/<pid>/fd/` inode 匹配 → `/proc/<pid>/comm` |
+| Windows | `netstat -ano` | `tasklist /fo csv /nh` |
+| macOS | `lsof -i TCP -s TCP:LISTEN -P -n` | lsof 输出直接含进程名 |
 
 ---
 
@@ -1204,13 +1235,30 @@ echo '{"cmd":"ping"}' | nc 127.0.0.1 21114
 #### `scan_services` — 扫描本机服务
 
 ```json
+// 快速扫描（20 个知名端口）
 请求：{"cmd": "scan_services"}
+
+// 全量扫描（所有监听端口，含进程信息）
+请求：{"cmd": "scan_services", "all": true}
 
 响应：{
   "services": [
-    {"port": 22, "name": "SSH",   "target": "nat-client add-rule -n SSH -t 22"},
-    {"port": 80, "name": "HTTP",  "target": "nat-client add-rule -n HTTP -t 80"},
-    {"port": 3306, "name": "MySQL", "target": "nat-client add-rule -n MySQL -t 3306"}
+    {
+      "port": 22,
+      "name": "SSH",
+      "target": "127.0.0.1:22",
+      "bind_addr": "0.0.0.0",
+      "pid": 1234,
+      "process_name": "sshd"
+    },
+    {
+      "port": 3306,
+      "name": "MySQL",
+      "target": "127.0.0.1:3306",
+      "bind_addr": "127.0.0.1",
+      "pid": 5678,
+      "process_name": "mysqld"
+    }
   ]
 }
 ```
@@ -1472,8 +1520,8 @@ echo "隧道端口: $PORT"
 # === 主机 A（被连接侧，已安装 SSH/HTTP/MySQL 等服务）===
 nat-client daemon --server 1.2.3.4
 
-# 步骤 1：扫描本机正在监听的服务
-nat-client scan-services
+# 步骤 1：扫描本机正在监听的服务（--all 获取进程信息）
+nat-client scan-services --all
 
 # 步骤 2：添加需要暴露的服务规则
 nat-client add-rule -n SSH -t 22
@@ -1683,7 +1731,7 @@ WARN [port_forward] peer=... 未配置任何转发规则，连接被拒绝
 解决方法：在被连接侧执行：
 
 ```bash
-nat-client scan-services          # 查看哪些服务可用
+nat-client scan-services --all    # 查看所有监听端口及进程名
 nat-client add-rule -n SSH -t 22  # 添加对应规则
 ```
 

@@ -85,6 +85,9 @@ pub struct IpcRequest {
     /// 代理端口（用于 proxy_start 命令）
     #[serde(default)]
     pub port: u16,
+    /// 全量扫描标志（用于 scan_services 命令）
+    #[serde(default)]
+    pub all: bool,
 }
 
 /// IPC 响应（通用）
@@ -635,10 +638,15 @@ async fn dispatch(req: IpcRequest) -> IpcResponse {
         }
 
         // ── 扫描本机正在监听的服务 ────────────────────────────────────────────
-        // 请求: {"cmd":"scan_services"}
-        // 响应: {"services":[{"port":22,"name":"SSH","target":"127.0.0.1:22"},...]}
+        // 请求: {"cmd":"scan_services"}           → 扫描 20 个知名端口（约 200ms）
+        // 请求: {"cmd":"scan_services","all":true} → 全量扫描，含进程名和绑定地址
+        // 响应: {"services":[{"port":22,"name":"SSH","bind_addr":"0.0.0.0","pid":1234,"process_name":"sshd"},...]}
         "scan_services" => {
-            let svcs = scan_local_services().await;
+            let svcs = if req.all {
+                crate::port_forward::scan_local_services_full().await
+            } else {
+                scan_local_services().await
+            };
             let json_svcs = svcs
                 .iter()
                 .map(|s| serde_json::to_value(s).unwrap_or_default())

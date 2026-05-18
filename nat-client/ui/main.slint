@@ -2556,183 +2556,215 @@ export component AppWindow inherits Window {
                 background: @radial-gradient(circle, Palette.orb-c, #00000000);
             }
 
-            if page == 0: DashboardPage {
+            if page == 0: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                online <=> root.online;
-                peer-id <=> root.peer-id;
-                nat-type <=> root.nat-type;
-                server-addr <=> root.server-addr;
-                logged-in <=> root.logged-in;
-                username <=> root.username;
-                role <=> root.role;
-                token-remaining <=> root.token-remaining;
-                quick-peer-id <=> root.quick-peer-id;
-                quick-local-port <=> root.quick-local-port;
-                connecting <=> root.connecting;
-                connect-result <=> root.connect-result;
-                connect-ok <=> root.connect-ok;
-                do-connect(id, port) => {
-                    root.do-connect(id, port);
-                }
-                do-refresh => {
-                    root.do-refresh();
+                viewport-width: self.width;
+                DashboardPage {
+                    width: parent.viewport-width;
+                    online <=> root.online;
+                    peer-id <=> root.peer-id;
+                    nat-type <=> root.nat-type;
+                    server-addr <=> root.server-addr;
+                    logged-in <=> root.logged-in;
+                    username <=> root.username;
+                    role <=> root.role;
+                    token-remaining <=> root.token-remaining;
+                    quick-peer-id <=> root.quick-peer-id;
+                    quick-local-port <=> root.quick-local-port;
+                    connecting <=> root.connecting;
+                    connect-result <=> root.connect-result;
+                    connect-ok <=> root.connect-ok;
+                    do-connect(id, port) => {
+                        root.do-connect(id, port);
+                    }
+                    do-refresh => {
+                        root.do-refresh();
+                    }
                 }
             }
 
-            if page == 1: ConnectionsPage {
+            if page == 1: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                items <=> root.connections;
-                close-conn(u) => {
-                    root.close-conn(u);
+                viewport-width: self.width;
+                ConnectionsPage {
+                    width: parent.viewport-width;
+                    items <=> root.connections;
+                    close-conn(u) => {
+                        root.close-conn(u);
+                    }
                 }
             }
 
-            if page == 2: PeersPage {
+            if page == 2: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                items <=> root.lan-peers;
-                discovering <=> root.discovering;
-                discover => {
-                    root.do-discover();
-                }
-                connect-peer(id) => {
-                    root.connect-peer(id);
+                viewport-width: self.width;
+                PeersPage {
+                    width: parent.viewport-width;
+                    items <=> root.lan-peers;
+                    discovering <=> root.discovering;
+                    discover => {
+                        root.do-discover();
+                    }
+                    connect-peer(id) => {
+                        root.connect-peer(id);
+                    }
                 }
             }
 
-            if page == 3: AccountPage {
+            if page == 3: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                logged-in <=> root.logged-in;
-                username <=> root.username;
-                role <=> root.role;
-                token-remaining <=> root.token-remaining;
-                sub-plan <=> root.sub-plan;
-                sub-device-used <=> root.sub-device-used;
-                sub-device-limit <=> root.sub-device-limit;
-                sub-expires <=> root.sub-expires;
-                busy <=> root.account-busy;
-                status-msg <=> root.account-status;
-                status-ok <=> root.account-status-ok;
-                input-user <=> root.login-user;
-                input-pass <=> root.login-pass;
-                input-email <=> root.reg-email;
-                input-device-name <=> root.reg-device-name;
-                input-old-pass <=> root.old-pass;
-                input-new-pass <=> root.new-pass;
-                show-register <=> root.show-register;
-                do-login => {
-                    root.do-login();
-                }
-                do-logout => {
-                    root.do-logout();
-                }
-                do-register => {
-                    root.do-register();
-                }
-                do-change-password => {
-                    root.do-change-password();
-                }
-                toggle-register => {
-                    root.toggle-register();
+                viewport-width: self.width;
+                AccountPage {
+                    width: parent.viewport-width;
+                    logged-in <=> root.logged-in;
+                    username <=> root.username;
+                    role <=> root.role;
+                    token-remaining <=> root.token-remaining;
+                    sub-plan <=> root.sub-plan;
+                    sub-device-used <=> root.sub-device-used;
+                    sub-device-limit <=> root.sub-device-limit;
+                    sub-expires <=> root.sub-expires;
+                    busy <=> root.account-busy;
+                    status-msg <=> root.account-status;
+                    status-ok <=> root.account-status-ok;
+                    input-user <=> root.login-user;
+                    input-pass <=> root.login-pass;
+                    input-email <=> root.reg-email;
+                    input-device-name <=> root.reg-device-name;
+                    input-old-pass <=> root.old-pass;
+                    input-new-pass <=> root.new-pass;
+                    show-register <=> root.show-register;
+                    do-login => {
+                        root.do-login();
+                    }
+                    do-logout => {
+                        root.do-logout();
+                    }
+                    do-register => {
+                        root.do-register();
+                    }
+                    do-change-password => {
+                        root.do-change-password();
+                    }
+                    toggle-register => {
+                        root.toggle-register();
+                    }
                 }
             }
 
-            if page == 4: DevicesPage {
+            if page == 4: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                items <=> root.devices;
-                logged-in <=> root.logged-in;
-                loading <=> root.devices-loading;
-                refresh => {
-                    root.do-refresh();
-                }
-                remove-device(id) => {
-                    root.do-remove-device(id);
+                viewport-width: self.width;
+                DevicesPage {
+                    width: parent.viewport-width;
+                    items <=> root.devices;
+                    logged-in <=> root.logged-in;
+                    loading <=> root.devices-loading;
+                    refresh => {
+                        root.do-refresh();
+                    }
+                    remove-device(id) => {
+                        root.do-remove-device(id);
+                    }
                 }
             }
 
-            if page == 5: SettingsPage {
+            if page == 5: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                server-addr <=> root.cfg-server;
-                relay-server <=> root.cfg-relay;
-                api-url <=> root.cfg-api-url;
-                ipc-port-str <=> root.cfg-ipc-port;
-                status-msg <=> root.settings-status;
-                status-ok <=> root.settings-status-ok;
-                busy <=> root.account-busy;
-                socks5-enabled <=> root.socks5-enabled;
-                socks5-exit-peer <=> root.socks5-exit-peer;
-                socks5-port-str <=> root.socks5-port-str;
-                save => {
-                    root.do-save-settings();
+                viewport-width: self.width;
+                SettingsPage {
+                    width: parent.viewport-width;
+                    server-addr <=> root.cfg-server;
+                    relay-server <=> root.cfg-relay;
+                    api-url <=> root.cfg-api-url;
+                    ipc-port-str <=> root.cfg-ipc-port;
+                    status-msg <=> root.settings-status;
+                    status-ok <=> root.settings-status-ok;
+                    busy <=> root.account-busy;
+                    socks5-enabled <=> root.socks5-enabled;
+                    socks5-exit-peer <=> root.socks5-exit-peer;
+                    socks5-port-str <=> root.socks5-port-str;
+                    save => {
+                        root.do-save-settings();
+                    }
+                    restart-mediator => {
+                        root.do-restart-mediator();
+                    }
+                    open-config-file => {
+                        root.do-open-config();
+                    }
+                    set-language(lang) => {
+                        root.set-language(lang);
+                    }
+                    toggle-socks5 => {
+                        root.toggle-socks5();
+                    }
+                    save-proxy-settings => {
+                        root.save-proxy-settings();
+                    }
+                    update-current-ver <=> root.update-current-ver;
+                    update-latest-ver  <=> root.update-latest-ver;
+                    update-available   <=> root.update-available;
+                    update-changelog   <=> root.update-changelog;
+                    update-msg         <=> root.update-msg;
+                    update-msg-ok      <=> root.update-msg-ok;
+                    update-checking    <=> root.update-checking;
+                    update-downloading <=> root.update-downloading;
+                    update-progress    <=> root.update-progress;
+                    do-check-update => { root.do-check-update(); }
+                    do-apply-update => { root.do-apply-update(); }
                 }
-                restart-mediator => {
-                    root.do-restart-mediator();
-                }
-                open-config-file => {
-                    root.do-open-config();
-                }
-                set-language(lang) => {
-                    root.set-language(lang);
-                }
-                toggle-socks5 => {
-                    root.toggle-socks5();
-                }
-                save-proxy-settings => {
-                    root.save-proxy-settings();
-                }
-                update-current-ver <=> root.update-current-ver;
-                update-latest-ver  <=> root.update-latest-ver;
-                update-available   <=> root.update-available;
-                update-changelog   <=> root.update-changelog;
-                update-msg         <=> root.update-msg;
-                update-msg-ok      <=> root.update-msg-ok;
-                update-checking    <=> root.update-checking;
-                update-downloading <=> root.update-downloading;
-                update-progress    <=> root.update-progress;
-                do-check-update => { root.do-check-update(); }
-                do-apply-update => { root.do-apply-update(); }
             }
 
-            if page == 6: TunnelPage {
+            if page == 6: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                socks5-enabled <=> root.socks5-enabled;
-                socks5-port-str <=> root.socks5-port-str;
-                socks5-exit-peer <=> root.socks5-exit-peer;
-                rules <=> root.tunnel-rules;
-                rules-loading <=> root.tunnel-rules-loading;
-                new-name <=> root.tunnel-new-name;
-                new-port <=> root.tunnel-new-port;
-                new-host <=> root.tunnel-new-host;
-                new-filter <=> root.tunnel-new-filter;
-                status-msg <=> root.tunnel-status-msg;
-                status-ok <=> root.tunnel-status-ok;
-                toggle-socks5 => { root.toggle-socks5(); }
-                refresh-rules => { root.do-refresh-rules(); }
-                add-rule => { root.do-add-rule(); }
-                remove-rule(id) => { root.do-remove-rule(id); }
+                viewport-width: self.width;
+                TunnelPage {
+                    width: parent.viewport-width;
+                    socks5-enabled <=> root.socks5-enabled;
+                    socks5-port-str <=> root.socks5-port-str;
+                    socks5-exit-peer <=> root.socks5-exit-peer;
+                    rules <=> root.tunnel-rules;
+                    rules-loading <=> root.tunnel-rules-loading;
+                    new-name <=> root.tunnel-new-name;
+                    new-port <=> root.tunnel-new-port;
+                    new-host <=> root.tunnel-new-host;
+                    new-filter <=> root.tunnel-new-filter;
+                    status-msg <=> root.tunnel-status-msg;
+                    status-ok <=> root.tunnel-status-ok;
+                    toggle-socks5 => { root.toggle-socks5(); }
+                    refresh-rules => { root.do-refresh-rules(); }
+                    add-rule => { root.do-add-rule(); }
+                    remove-rule(id) => { root.do-remove-rule(id); }
+                }
             }
 
-            if page == 7: PaymentPage {
+            if page == 7: ScrollView {
                 width: parent.width;
                 height: parent.height;
-                plans <=> root.pay-plans;
-                loading <=> root.pay-loading;
-                status-msg <=> root.pay-status-msg;
-                status-ok <=> root.pay-status-ok;
-                qr-image <=> root.pay-qr-image;
-                qr-visible <=> root.pay-qr-visible;
-                selected-plan-name <=> root.pay-selected-plan-name;
-                selected-plan-price <=> root.pay-selected-plan-price;
-                refresh-plans => { root.do-refresh-plans(); }
-                pay-alipay(id) => { root.do-pay-alipay(id); }
-                pay-stripe(id) => { root.do-pay-stripe(id); }
-                close-qr => { root.do-close-qr(); }
+                viewport-width: self.width;
+                PaymentPage {
+                    width: parent.viewport-width;
+                    plans <=> root.pay-plans;
+                    loading <=> root.pay-loading;
+                    status-msg <=> root.pay-status-msg;
+                    status-ok <=> root.pay-status-ok;
+                    qr-image <=> root.pay-qr-image;
+                    qr-visible <=> root.pay-qr-visible;
+                    selected-plan-name <=> root.pay-selected-plan-name;
+                    selected-plan-price <=> root.pay-selected-plan-price;
+                    refresh-plans => { root.do-refresh-plans(); }
+                    pay-alipay(id) => { root.do-pay-alipay(id); }
+                    pay-stripe(id) => { root.do-pay-stripe(id); }
+                    close-qr => { root.do-close-qr(); }
+                }
             }
         }
     }

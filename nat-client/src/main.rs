@@ -186,8 +186,12 @@ enum Commands {
         #[arg(short, long)]
         rule_id: String,
     },
-    /// 扫描本机当前正在监听的常见服务（SSH、HTTP、MySQL 等）
-    ScanServices,
+    /// 扫描本机当前正在监听的服务
+    ScanServices {
+        /// 全量扫描所有端口（含进程名、绑定地址）；默认只扫描 20 个知名端口
+        #[arg(long, short)]
+        all: bool,
+    },
 
     // ── 调试 ──────────────────────────────────────────────────────────────────
     /// 发送原始 JSON 命令（调试用）
@@ -576,27 +580,60 @@ async fn run_cli_command(cmd: Commands, ipc_port: u16) {
             let r = ipc::send_command(ipc_port, &cmd).await.unwrap_or_default();
             ipc::pretty_print(&r);
         }
-        Commands::ScanServices => {
-            println!("正在扫描本机服务（约 200ms）...");
-            let r = ipc::send_command(ipc_port, r#"{"cmd":"scan_services"}"#)
+        Commands::ScanServices { all } => {
+            if all {
+                println!("正在全量扫描本机监听端口（含进程信息）...");
+            } else {
+                println!("正在扫描本机常用服务端口（约 200ms）...");
+            }
+            let cmd = serde_json::json!({ "cmd": "scan_services", "all": all }).to_string();
+            let r = ipc::send_command(ipc_port, &cmd)
                 .await
                 .unwrap_or_default();
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r) {
                 if let Some(svcs) = v["services"].as_array() {
                     if svcs.is_empty() {
-                        println!("未检测到常用服务正在监听");
+                        println!("未检测到正在监听的服务");
                     } else {
-                        println!("\n检测到以下服务：");
-                        println!("{:<8} {:<16} {}", "端口", "服务名", "可添加规则命令");
-                        println!("{}", "-".repeat(60));
-                        for s in svcs {
-                            let port = s["port"].as_u64().unwrap_or(0);
-                            let name = s["name"].as_str().unwrap_or("?");
+                        println!();
+                        if all {
+                            // 全量扫描：显示端口、绑定地址、进程名、PID、建议命令
                             println!(
-                                "{:<8} {:<16} nat-client add-rule -n {} -t {}",
-                                port, name, name, port
+                                "{:<7} {:<18} {:<22} {:<8} {}",
+                                "端口", "绑定地址", "进程名", "PID", "建议添加规则"
                             );
+                            println!("{}", "-".repeat(80));
+                            for s in svcs {
+                                let port        = s["port"].as_u64().unwrap_or(0);
+                                let bind        = s["bind_addr"].as_str().unwrap_or("?");
+                                let proc_name   = s["process_name"].as_str().unwrap_or("");
+                                let pid         = s["pid"].as_u64().map(|p| p.to_string()).unwrap_or_else(|| "-".to_owned());
+                                let svc_name    = s["name"].as_str().unwrap_or("");
+                                let rule_name   = if svc_name.is_empty() {
+                                    format!("Port{}", port)
+                                } else {
+                                    svc_name.to_owned()
+                                };
+                                println!(
+                                    "{:<7} {:<18} {:<22} {:<8} nat-client add-rule -n {} -t {}",
+                                    port, bind, proc_name, pid, rule_name, port
+                                );
+                            }
+                        } else {
+                            // 快速扫描：显示端口、服务名、建议命令
+                            println!("{:<8} {:<16} {}", "端口", "服务名", "建议添加规则");
+                            println!("{}", "-".repeat(60));
+                            for s in svcs {
+                                let port = s["port"].as_u64().unwrap_or(0);
+                                let name = s["name"].as_str().unwrap_or("?");
+                                println!(
+                                    "{:<8} {:<16} nat-client add-rule -n {} -t {}",
+                                    port, name, name, port
+                                );
+                            }
                         }
+                        println!();
+                        println!("提示：使用 --all 参数可扫描所有端口并显示进程信息");
                     }
                     return;
                 }

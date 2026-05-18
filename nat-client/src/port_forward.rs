@@ -534,43 +534,64 @@ impl PortForwardManager {
 pub struct ServiceInfo {
     /// 服务监听端口
     pub port: u16,
-    /// 服务名称（根据知名端口推测）
+    /// 服务名称（根据知名端口推测，全量扫描时可能为空）
     pub name: String,
-    /// 建议的转发目标地址
+    /// 建议的转发目标地址（127.0.0.1:port）
     pub target: String,
+    /// 实际绑定地址（如 "0.0.0.0"、"127.0.0.1"、"::"）
+    #[serde(default)]
+    pub bind_addr: String,
+    /// 监听进程 ID（全量扫描时有值）
+    #[serde(default)]
+    pub pid: Option<u32>,
+    /// 监听进程名（全量扫描时有值）
+    #[serde(default)]
+    pub process_name: String,
 }
 
-/// 扫描本机常用端口，返回当前正在监听的服务列表
-///
-/// 探测超时 200ms/端口，并发探测，总时长约 200ms。
+/// 知名端口 → 服务名映射
+fn well_known_name(port: u16) -> &'static str {
+    match port {
+        21    => "FTP",
+        22    => "SSH",
+        23    => "Telnet",
+        25    => "SMTP",
+        53    => "DNS",
+        80    => "HTTP",
+        110   => "POP3",
+        143   => "IMAP",
+        443   => "HTTPS",
+        1433  => "MSSQL",
+        1521  => "Oracle",
+        3306  => "MySQL",
+        3389  => "RDP",
+        5432  => "PostgreSQL",
+        5900  => "VNC",
+        6379  => "Redis",
+        8080  => "HTTP-Alt",
+        8443  => "HTTPS-Alt",
+        8888  => "Jupyter",
+        9200  => "Elasticsearch",
+        27017 => "MongoDB",
+        5000  => "HTTP-Dev",
+        8000  => "HTTP-Dev",
+        4000  => "HTTP-Dev",
+        9000  => "HTTP-Dev",
+        _     => "",
+    }
+}
+
+/// 扫描本机 20 个知名端口，返回当前正在监听的服务列表（约 200ms）
 pub async fn scan_local_services() -> Vec<ServiceInfo> {
-    let well_known: &[(u16, &str)] = &[
-        (21,    "FTP"),
-        (22,    "SSH"),
-        (23,    "Telnet"),
-        (80,    "HTTP"),
-        (443,   "HTTPS"),
-        (1433,  "MSSQL"),
-        (3306,  "MySQL"),
-        (3389,  "RDP"),
-        (5432,  "PostgreSQL"),
-        (5900,  "VNC"),
-        (6379,  "Redis"),
-        (8080,  "HTTP-Alt"),
-        (8443,  "HTTPS-Alt"),
-        (8888,  "Jupyter"),
-        (9200,  "Elasticsearch"),
-        (27017, "MongoDB"),
-        (5000,  "HTTP-Dev"),
-        (8000,  "HTTP-Dev"),
-        (4000,  "HTTP-Dev"),
-        (9000,  "HTTP-Dev"),
+    let ports: &[u16] = &[
+        21, 22, 23, 80, 443, 1433, 3306, 3389, 5432,
+        5900, 6379, 8080, 8443, 8888, 9200, 27017,
+        5000, 8000, 4000, 9000,
     ];
 
-    let tasks: Vec<_> = well_known
+    let tasks: Vec<_> = ports
         .iter()
-        .map(|&(port, name)| {
-            let name = name.to_owned();
+        .map(|&port| {
             tokio::spawn(async move {
                 let addr = format!("127.0.0.1:{}", port);
                 let ok = tokio::time::timeout(
@@ -584,8 +605,11 @@ pub async fn scan_local_services() -> Vec<ServiceInfo> {
                 if ok {
                     Some(ServiceInfo {
                         port,
-                        name,
+                        name: well_known_name(port).to_owned(),
                         target: addr,
+                        bind_addr: String::new(),
+                        pid: None,
+                        process_name: String::new(),
                     })
                 } else {
                     None
@@ -602,4 +626,291 @@ pub async fn scan_local_services() -> Vec<ServiceInfo> {
     }
     found.sort_by_key(|s| s.port);
     found
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 全量端口扫描（含进程名、绑定地址）
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// 扫描本机所有正在监听的 TCP 端口，附带进程名和绑定地址
+///
+/// - Linux   : 解析 /proc/net/tcp（/tcp6），通过 /proc/<pid>/fd 匹配 inode
+/// - Windows : 调用 netstat -ano + tasklist 解析输出
+/// - macOS   : 调用 lsof -i TCP -s TCP:LISTEN -P -n 解析输出
+pub async fn scan_local_services_full() -> Vec<ServiceInfo> {
+    #[cfg(target_os = "linux")]
+    {
+        tokio::task::spawn_blocking(scan_full_linux).await.unwrap_or_default()
+    }
+    #[cfg(target_os = "windows")]
+    {
+        scan_full_windows().await
+    }
+    #[cfg(target_os = "macos")]
+    {
+        scan_full_macos().await
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    {
+        // 其他平台降级为知名端口扫描
+        scan_local_services().await
+    }
+}
+
+// ── Linux 实现 ───────────────────────────────────────────────────────────────
+
+#[cfg(target_os = "linux")]
+fn scan_full_linux() -> Vec<ServiceInfo> {
+    let inode_pid = build_inode_pid_map();
+    let mut result = Vec::new();
+
+    for path in &["/proc/net/tcp", "/proc/net/tcp6"] {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            for (i, line) in content.lines().enumerate() {
+                if i == 0 { continue; } // 跳过标题行
+                let cols: Vec<&str> = line.split_whitespace().collect();
+                if cols.len() < 10 { continue; }
+
+                let state = cols[3];
+                if state != "0A" { continue; } // 0A = LISTEN
+
+                let (bind_ip, port) = parse_proc_net_addr(cols[1], path.contains("tcp6"));
+                if port == 0 { continue; }
+
+                let inode: u64 = cols[9].parse().unwrap_or(0);
+                let pid = inode_pid.get(&inode).copied();
+                let process_name = pid
+                    .and_then(|p| std::fs::read_to_string(format!("/proc/{}/comm", p)).ok())
+                    .map(|s| s.trim().to_owned())
+                    .unwrap_or_default();
+
+                result.push(ServiceInfo {
+                    port,
+                    name: well_known_name(port).to_owned(),
+                    target: format!("127.0.0.1:{}", port),
+                    bind_addr: bind_ip,
+                    pid,
+                    process_name,
+                });
+            }
+        }
+    }
+
+    result.sort_by_key(|s| s.port);
+    result.dedup_by_key(|s| s.port); // IPv4/IPv6 同端口去重
+    result
+}
+
+/// 解析 /proc/net/tcp 中的 hex 地址字段（小端序）
+#[cfg(target_os = "linux")]
+fn parse_proc_net_addr(s: &str, is_v6: bool) -> (String, u16) {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 2 {
+        return (String::new(), 0);
+    }
+    let port = u16::from_str_radix(parts[1], 16).unwrap_or(0);
+
+    let ip = if is_v6 {
+        // IPv6: 32 hex chars 小端序，每 4 字节一组
+        let hex = parts[0];
+        if hex.len() == 32 {
+            let mut groups = Vec::new();
+            for chunk in hex.as_bytes().chunks(8) {
+                if let Ok(val) = u32::from_str_radix(std::str::from_utf8(chunk).unwrap_or(""), 16) {
+                    let b = val.to_le_bytes();
+                    groups.push(format!("{:02x}{:02x}:{:02x}{:02x}", b[0], b[1], b[2], b[3]));
+                }
+            }
+            format!("[{}]", groups.join(":"))
+        } else {
+            String::new()
+        }
+    } else {
+        // IPv4: 8 hex chars 小端序
+        match u32::from_str_radix(parts[0], 16) {
+            Ok(v) => {
+                let b = v.to_le_bytes();
+                format!("{}.{}.{}.{}", b[0], b[1], b[2], b[3])
+            }
+            Err(_) => String::new(),
+        }
+    };
+
+    (ip, port)
+}
+
+/// 构建 inode → PID 映射表（扫描 /proc/<pid>/fd/）
+#[cfg(target_os = "linux")]
+fn build_inode_pid_map() -> std::collections::HashMap<u64, u32> {
+    let mut map = std::collections::HashMap::new();
+    let Ok(proc_dir) = std::fs::read_dir("/proc") else { return map; };
+
+    for entry in proc_dir.flatten() {
+        let pid: u32 = match entry.file_name().to_str().and_then(|s| s.parse().ok()) {
+            Some(p) => p,
+            None => continue,
+        };
+        let fd_dir = format!("/proc/{}/fd", pid);
+        let Ok(fds) = std::fs::read_dir(&fd_dir) else { continue };
+        for fd in fds.flatten() {
+            let Ok(target) = std::fs::read_link(fd.path()) else { continue };
+            let t = target.to_string_lossy();
+            // 格式：socket:[inode]
+            if let Some(inner) = t.strip_prefix("socket:[").and_then(|s| s.strip_suffix("]")) {
+                if let Ok(inode) = inner.parse::<u64>() {
+                    map.entry(inode).or_insert(pid);
+                }
+            }
+        }
+    }
+    map
+}
+
+// ── Windows 实现 ─────────────────────────────────────────────────────────────
+
+#[cfg(target_os = "windows")]
+async fn scan_full_windows() -> Vec<ServiceInfo> {
+    use tokio::process::Command;
+
+    // netstat -ano 获取所有 LISTENING 端口和 PID
+    let netstat = Command::new("netstat")
+        .args(["-ano"])
+        .output()
+        .await;
+
+    let output = match netstat {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+        Err(_) => return scan_local_services().await,
+    };
+
+    // 收集 (port, bind_addr, pid)
+    let mut port_pids: Vec<(u16, String, u32)> = Vec::new();
+    for line in output.lines() {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        // 格式: TCP  0.0.0.0:22  0.0.0.0:0  LISTENING  1234
+        if cols.len() < 5 { continue; }
+        if cols[0] != "TCP" { continue; }
+        if !cols[3].eq_ignore_ascii_case("LISTENING") { continue; }
+
+        let pid: u32 = cols[4].parse().unwrap_or(0);
+        let local = cols[1];
+
+        // 解析 bind_addr:port（处理 IPv4 和 [::]:port 两种格式）
+        let (bind_addr, port) = if local.starts_with('[') {
+            // IPv6: [::]:22
+            if let Some(bracket_end) = local.rfind(']') {
+                let addr = &local[..=bracket_end];
+                let port_str = local.get(bracket_end + 2..).unwrap_or("0");
+                (addr.to_owned(), port_str.parse().unwrap_or(0))
+            } else {
+                continue;
+            }
+        } else {
+            // IPv4: 0.0.0.0:22
+            if let Some(pos) = local.rfind(':') {
+                let addr = &local[..pos];
+                let port_str = &local[pos + 1..];
+                (addr.to_owned(), port_str.parse().unwrap_or(0))
+            } else {
+                continue;
+            }
+        };
+
+        if port == 0 { continue; }
+        port_pids.push((port, bind_addr, pid));
+    }
+
+    // 批量查询 PID → 进程名（tasklist /fo csv /nh）
+    let tasklist = Command::new("tasklist")
+        .args(["/fo", "csv", "/nh"])
+        .output()
+        .await;
+
+    let mut pid_name: std::collections::HashMap<u32, String> = std::collections::HashMap::new();
+    if let Ok(o) = tasklist {
+        for line in String::from_utf8_lossy(&o.stdout).lines() {
+            // 格式: "sshd.exe","1234","Console","1","5,932 K"
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 2 {
+                let name = parts[0].trim_matches('"').to_owned();
+                let pid: u32 = parts[1].trim_matches('"').parse().unwrap_or(0);
+                if pid != 0 {
+                    pid_name.insert(pid, name);
+                }
+            }
+        }
+    }
+
+    let mut result: Vec<ServiceInfo> = port_pids
+        .into_iter()
+        .map(|(port, bind_addr, pid)| ServiceInfo {
+            port,
+            name: well_known_name(port).to_owned(),
+            target: format!("127.0.0.1:{}", port),
+            bind_addr,
+            pid: Some(pid),
+            process_name: pid_name.get(&pid).cloned().unwrap_or_default(),
+        })
+        .collect();
+
+    result.sort_by_key(|s| s.port);
+    result.dedup_by_key(|s| s.port);
+    result
+}
+
+// ── macOS 实现 ───────────────────────────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
+async fn scan_full_macos() -> Vec<ServiceInfo> {
+    use tokio::process::Command;
+
+    // lsof -i TCP -s TCP:LISTEN -P -n
+    // -P 不把端口号转换成服务名；-n 不做 DNS 反查
+    let out = Command::new("lsof")
+        .args(["-i", "TCP", "-s", "TCP:LISTEN", "-P", "-n"])
+        .output()
+        .await;
+
+    let output = match out {
+        Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
+        Err(_) => return scan_local_services().await,
+    };
+
+    let mut result = Vec::new();
+    for (i, line) in output.lines().enumerate() {
+        if i == 0 { continue; } // 标题行
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() < 9 { continue; }
+
+        let process_name = cols[0].to_owned();
+        let pid: u32 = cols[1].parse().unwrap_or(0);
+        // NAME 列格式: "*:22" 或 "127.0.0.1:3306" 或 "[::]:22"
+        let name_col = cols[8];
+        // 去掉结尾的 " (LISTEN)"（如果有）
+        let addr_part = name_col.trim_end_matches(" (LISTEN)");
+
+        let (bind_addr, port) = if let Some(pos) = addr_part.rfind(':') {
+            let host = &addr_part[..pos];
+            let p: u16 = addr_part[pos + 1..].parse().unwrap_or(0);
+            let bind = if host == "*" { "0.0.0.0".to_owned() } else { host.to_owned() };
+            (bind, p)
+        } else {
+            continue;
+        };
+
+        if port == 0 { continue; }
+
+        result.push(ServiceInfo {
+            port,
+            name: well_known_name(port).to_owned(),
+            target: format!("127.0.0.1:{}", port),
+            bind_addr,
+            pid: Some(pid),
+            process_name,
+        });
+    }
+
+    result.sort_by_key(|s| s.port);
+    result.dedup_by_key(|s| s.port);
+    result
 }
