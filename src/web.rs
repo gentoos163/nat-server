@@ -506,6 +506,38 @@ pub async fn register(
     }
 }
 
+/// 返回最新客户端版本信息（管理员通过 /api/admin/settings 设置下列 key）：
+///   client_latest_version, client_dl_win, client_dl_mac, client_dl_linux,
+///   client_sha256_win, client_sha256_mac, client_sha256_linux, client_changelog
+async fn client_version(Extension(state): Extension<ApiState>) -> impl IntoResponse {
+    let db = &state.db;
+
+    async fn get(db: &Database, key: &str) -> String {
+        db.get_setting(key).await.ok().flatten().unwrap_or_default()
+    }
+
+    let version = get(db, "client_latest_version").await;
+    let dl_win = get(db, "client_dl_win").await;
+    let dl_mac = get(db, "client_dl_mac").await;
+    let dl_linux = get(db, "client_dl_linux").await;
+    let sha256_win = get(db, "client_sha256_win").await;
+    let sha256_mac = get(db, "client_sha256_mac").await;
+    let sha256_linux = get(db, "client_sha256_linux").await;
+    let changelog = get(db, "client_changelog").await;
+
+    Json(serde_json::json!({
+        "ok": true,
+        "version": version,
+        "download_url_windows": dl_win,
+        "download_url_macos":   dl_mac,
+        "download_url_linux":   dl_linux,
+        "sha256_windows":       sha256_win,
+        "sha256_macos":         sha256_mac,
+        "sha256_linux":         sha256_linux,
+        "changelog":            changelog,
+    }))
+}
+
 // 创建Web路由
 pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
     let state = ApiState { db, jwt_secret };
@@ -598,6 +630,8 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
         )
         // 系统信息 API
         .route("/api/admin/sysinfo", get(crate::settings_api::get_sysinfo))
+        // 客户端更新（公开，无需认证）
+        .route("/api/client/version", get(client_version))
         // ── 收款 API ──────────────────────────────────────────────────────────
         .route("/api/payment/create", post(crate::payment::create_payment))
         .route("/api/payment/order/:order_no", get(crate::payment::query_order))

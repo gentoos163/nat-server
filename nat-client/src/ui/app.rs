@@ -49,6 +49,32 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
         window.set_app_logo(logo);
     }
 
+    // 设置当前版本号
+    window.set_update_current_ver(env!("CARGO_PKG_VERSION").into());
+
+    // 启动后台自动检查线程（参考 RustDesk start_auto_update_check）
+    // 30 秒后首次检查，之后每 24 小时一次；发现新版本时回调推送到 UI
+    {
+        let win = window.as_weak();
+        let api_url = ClientConfig::get_api_url();
+        if !api_url.is_empty() {
+            crate::updater::start_auto_update_check(api_url, move |info| {
+                let version = info.version.clone();
+                let changelog = info.changelog.clone();
+                let win2 = win.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = win2.upgrade() {
+                        w.set_update_available(true);
+                        w.set_update_latest_ver(version.as_str().into());
+                        w.set_update_changelog(changelog.as_str().into());
+                        w.set_update_msg("发现新版本，请前往设置页更新".into());
+                        w.set_update_msg_ok(true);
+                    }
+                });
+            });
+        }
+    }
+
     // 初始化主题
     window
         .global::<ThemeState>()
@@ -126,7 +152,10 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
     }
 
     // 启动 Slint 事件循环（阻塞直到窗口关闭）
-    window.run()
+    let result = window.run();
+    // 窗口关闭后停止后台更新检查线程
+    crate::updater::stop_auto_update();
+    result
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -958,6 +987,111 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                 w.set_pay_qr_visible(false);
                 w.set_pay_status_msg("".into());
             }
+        });
+    }
+
+    // ── 手动检查更新 ─────────────────────────────────────────────────────────
+    // 在独立线程中执行（不依赖后台自动检查线程），确保 UI 能立即响应
+    {
+        let win = w.as_weak();
+        w.on_do_check_update(move || {
+            let api_url = crate::config::ClientConfig::get_api_url();
+            if api_url.is_empty() {
+                if let Some(w) = win.upgrade() {
+                    w.set_update_msg("请先在设置中配置 API 地址".into());
+                    w.set_update_msg_ok(false);
+                }
+                return;
+            }
+            let win2 = win.clone();
+            if let Some(w) = win2.upgrade() {
+                w.set_update_checking(true);
+                w.set_update_msg("".into());
+                w.set_update_available(false);
+            }
+            std::thread::spawn(move || {
+                let result = crate::updater::check_update(&api_url);
+                // 将完整 UpdateInfo 存入全局（供 do_apply_update 使用，含 sha256）
+                if let Ok(Some(ref info)) = result {
+                    if let Ok(mut stored) = crate::updater::SOFTWARE_UPDATE_INFO.lock() {
+                        *stored = Some(info.clone());
+                    }
+                    if let Ok(mut url) = crate::updater::SOFTWARE_UPDATE_URL.lock() {
+                        *url = info.download_url.clone();
+                    }
+                }
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_update_checking(false);
+                    match result {
+                        Ok(Some(info)) => {
+                            w.set_update_available(true);
+                            w.set_update_latest_ver(info.version.as_str().into());
+                            w.set_update_changelog(info.changelog.as_str().into());
+                            w.set_update_msg("发现新版本！".into());
+                            w.set_update_msg_ok(true);
+                        }
+                        Ok(None) => {
+                            w.set_update_msg("已是最新版本".into());
+                            w.set_update_msg_ok(true);
+                        }
+                        Err(e) => {
+                            w.set_update_msg(format!("检查失败: {e}").as_str().into());
+                            w.set_update_msg_ok(false);
+                        }
+                    }
+                });
+            });
+        });
+    }
+
+    // ── 下载并安装更新 ───────────────────────────────────────────────────────
+    // 使用 SOFTWARE_UPDATE_URL 中已存储的下载地址（check 阶段已验证）
+    // 参考 RustDesk：HEAD 请求检查已下载文件大小，避免重复下载
+    {
+        let win = w.as_weak();
+        w.on_do_apply_update(move || {
+            // 从全局取出检查阶段存储的完整 UpdateInfo（含 sha256）
+            let info = match crate::updater::SOFTWARE_UPDATE_INFO.lock().ok().and_then(|g| g.clone()) {
+                Some(i) => i,
+                None => {
+                    if let Some(w) = win.upgrade() {
+                        w.set_update_msg("请先点击 [检查更新]".into());
+                        w.set_update_msg_ok(false);
+                    }
+                    return;
+                }
+            };
+
+            let win2 = win.clone();
+            if let Some(w) = win2.upgrade() {
+                w.set_update_downloading(true);
+                w.set_update_progress(0.0);
+                w.set_update_msg("正在下载…".into());
+                w.set_update_msg_ok(true);
+            }
+
+            std::thread::spawn(move || {
+                let win3 = win2.clone();
+                let result = crate::updater::download_and_apply(&info, move |p| {
+                    let win4 = win3.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = win4.upgrade() {
+                            w.set_update_progress(p);
+                        }
+                    });
+                });
+                // download_and_apply 成功时进程已退出，仅失败才到达此处
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = win2.upgrade() {
+                        w.set_update_downloading(false);
+                        if let Err(e) = result {
+                            w.set_update_msg(format!("更新失败: {e}").as_str().into());
+                            w.set_update_msg_ok(false);
+                        }
+                    }
+                });
+            });
         });
     }
 }

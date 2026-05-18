@@ -27,6 +27,7 @@ mod lan;
 mod port_forward;
 mod rendezvous_mediator;
 mod socks5;
+mod updater;
 #[cfg(feature = "gui")]
 mod ui;
 
@@ -191,6 +192,14 @@ enum Commands {
     // ── 调试 ──────────────────────────────────────────────────────────────────
     /// 发送原始 JSON 命令（调试用）
     Send { json: String },
+
+    // ── 内部：更新替换（由新版本程序调用，用户不直接使用）────────────────────
+    /// 替换旧版本并重启（Windows 自动更新内部流程）
+    #[clap(hide = true)]
+    ApplyUpdate {
+        /// 旧版本程序的完整路径
+        old_exe: String,
+    },
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -597,6 +606,10 @@ async fn run_cli_command(cmd: Commands, ipc_port: u16) {
         Commands::Send { json } => {
             let r = ipc::send_command(ipc_port, &json).await.unwrap_or_default();
             ipc::pretty_print(&r);
+        }
+        Commands::ApplyUpdate { old_exe } => {
+            // 直接执行，不需要 tokio
+            crate::updater::apply_update_from_cli(&old_exe);
         }
         // GUI / Daemon 已在 main() 中处理
         _ => {}

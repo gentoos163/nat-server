@@ -1320,12 +1320,24 @@ component SettingsPage inherits VerticalLayout {
     in-out property <bool> socks5-enabled;
     in-out property <string> socks5-exit-peer;
     in-out property <string> socks5-port-str: "1080";
+    // 更新
+    in property <string> update-current-ver;
+    in property <string> update-latest-ver;
+    in property <bool>   update-available;
+    in property <string> update-changelog;
+    in property <string> update-msg;
+    in property <bool>   update-msg-ok;
+    in property <bool>   update-checking;
+    in property <bool>   update-downloading;
+    in property <float>  update-progress;
     callback save();
     callback restart-mediator();
     callback open-config-file();
     callback set-language(string);
     callback toggle-socks5();
     callback save-proxy-settings();
+    callback do-check-update();
+    callback do-apply-update();
 
     spacing: 0px;
     padding: 24px;
@@ -1551,6 +1563,123 @@ component SettingsPage inherits VerticalLayout {
                         root.save-proxy-settings();
                     }
                 }
+            }
+        }
+    }
+
+    Rectangle {
+        height: 16px;
+    }
+
+    // ── 检查更新卡片 ──────────────────────────────────────────
+    Text {
+        text: "软件更新";
+        color: Palette.text-bright;
+        font-size: 15px;
+        font-weight: 600;
+        height: 30px;
+        vertical-alignment: center;
+    }
+
+    Card {
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+
+            // 当前版本 + 检查按钮
+            HorizontalLayout {
+                height: 34px;
+                spacing: 10px;
+                Text {
+                    text: "当前版本：v" + root.update-current-ver;
+                    color: Palette.text-dim;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                PBtn {
+                    text: root.update-checking ? "检查中…" : "检查更新";
+                    small: true;
+                    width: 90px;
+                    enabled: !root.update-checking && !root.update-downloading;
+                    clicked => {
+                        root.do-check-update();
+                    }
+                }
+            }
+
+            // 有新版本时显示
+            if root.update-available: VerticalLayout {
+                spacing: 8px;
+
+                // 版本提示行
+                HorizontalLayout {
+                    height: 28px;
+                    spacing: 8px;
+                    alignment: start;
+                    Rectangle {
+                        width: 10px;
+                        height: 10px;
+                        border-radius: 5px;
+                        background: Palette.success;
+                        y: (28px - self.height) / 2;
+                    }
+
+                    Text {
+                        text: "发现新版本 v" + root.update-latest-ver;
+                        color: Palette.success;
+                        font-size: 14px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // 更新日志
+                if root.update-changelog != "": Text {
+                    text: root.update-changelog;
+                    color: Palette.text-dim;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+
+                // 下载进度条
+                if root.update-downloading: VerticalLayout {
+                    spacing: 4px;
+                    Rectangle {
+                        height: 6px;
+                        border-radius: 3px;
+                        background: Palette.border;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * root.update-progress;
+                            height: parent.height;
+                            border-radius: parent.border-radius;
+                            background: Palette.primary;
+                        }
+                    }
+
+                    Text {
+                        text: "下载中 " + Math.round(root.update-progress * 100) + "%";
+                        color: Palette.text-dim;
+                        font-size: 11px;
+                    }
+                }
+
+                // 安装按钮（下载期间隐藏）
+                if !root.update-downloading: PBtn {
+                    text: "下载并安装";
+                    width: 120px;
+                    clicked => {
+                        root.do-apply-update();
+                    }
+                }
+            }
+
+            // 更新状态消息
+            if root.update-msg != "": StatusMsg {
+                msg: root.update-msg;
+                ok: root.update-msg-ok;
             }
         }
     }
@@ -2126,6 +2255,17 @@ export component AppWindow inherits Window {
     in property <string> pay-selected-plan-name;
     in property <float>  pay-selected-plan-price;
 
+    // ── 更新 ──────────────────────────────────────────────────
+    in property <string> update-current-ver: "";
+    in property <string> update-latest-ver: "";
+    in property <bool>   update-available;
+    in property <string> update-changelog: "";
+    in property <string> update-msg: "";
+    in property <bool>   update-msg-ok;
+    in property <bool>   update-checking;
+    in property <bool>   update-downloading;
+    in property <float>  update-progress;
+
     in property <bool> connecting;
     in property <bool> discovering;
     in property <bool> devices-loading;
@@ -2188,6 +2328,8 @@ export component AppWindow inherits Window {
     callback do-pay-alipay(int);   // plan_id
     callback do-pay-stripe(int);   // plan_id
     callback do-close-qr();
+    callback do-check-update();
+    callback do-apply-update();
 
     // ── 布局 ──────────────────────────────────────────────────
     HorizontalLayout {
@@ -2543,6 +2685,17 @@ export component AppWindow inherits Window {
                 save-proxy-settings => {
                     root.save-proxy-settings();
                 }
+                update-current-ver <=> root.update-current-ver;
+                update-latest-ver  <=> root.update-latest-ver;
+                update-available   <=> root.update-available;
+                update-changelog   <=> root.update-changelog;
+                update-msg         <=> root.update-msg;
+                update-msg-ok      <=> root.update-msg-ok;
+                update-checking    <=> root.update-checking;
+                update-downloading <=> root.update-downloading;
+                update-progress    <=> root.update-progress;
+                do-check-update => { root.do-check-update(); }
+                do-apply-update => { root.do-apply-update(); }
             }
 
             if page == 6: TunnelPage {
