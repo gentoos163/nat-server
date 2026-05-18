@@ -2,6 +2,15 @@
 use askama::Template;
 use serde::Serialize;
 
+#[derive(Template)]
+#[template(path = "home.html")]
+pub struct HomeTemplate {
+    pub title: String,
+    pub current_user: Option<UserInfo>,
+    pub t: crate::i18n::T,
+    pub lang: String,
+}
+
 #[derive(Serialize, Clone)]
 pub struct UserInfo {
     pub id: i64,

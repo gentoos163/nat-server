@@ -16,7 +16,7 @@ use crate::{
     i18n,
     views::{
         AdminSettingsTemplate, AdminSubscriptionsTemplate, DashboardTemplate, DevicesTemplate,
-        ForgotPasswordTemplate, LoginTemplate, MonitorTemplate, RegisterTemplate,
+        ForgotPasswordTemplate, HomeTemplate, LoginTemplate, MonitorTemplate, RegisterTemplate,
         ResetPasswordTemplate, SubscriptionTemplate, UsersTemplate,
     },
 };
@@ -67,6 +67,22 @@ fn detect_lang(headers: &HeaderMap) -> String {
 }
 
 // Web handlers
+pub async fn home_page(headers: HeaderMap) -> impl IntoResponse {
+    let lang = detect_lang(&headers);
+    let t = i18n::get(&lang);
+    let template = HomeTemplate {
+        title: "NAT Server — 安全内网穿透服务".to_string(),
+        current_user: None,
+        t,
+        lang,
+    };
+    Html(
+        template
+            .render()
+            .unwrap_or_else(|_| "Template error".to_string()),
+    )
+}
+
 pub async fn login_page(headers: HeaderMap) -> impl IntoResponse {
     let lang = detect_lang(&headers);
     let t = i18n::get(&lang);
@@ -496,7 +512,7 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
 
     Router::new()
         // 页面路由
-        .route("/", get(login_page))
+        .route("/", get(home_page))
         .route("/login", get(login_page))
         .route("/register", get(register_page))
         .route("/forgot-password", get(forgot_password_page))

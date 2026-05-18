@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="{{ lang }}" data-theme="">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --blue: #0071e3;
+      --blue-h: #0077ed;
+      --green: #34c759;
+      --bg: #f5f5f7;
+      --surface: #ffffff;
+      --surface2: #f5f5f7;
+      --text: #1d1d1f;
+      --text2: #6e6e73;
+      --text3: #aeaeb2;
+      --border: rgba(0,0,0,0.08);
+      --shadow: 0 2px 12px rgba(0,0,0,0.07);
+      --shadow-l: 0 8px 32px rgba(0,0,0,0.10);
+      --radius: 14px;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    }
+    [data-theme="dark"] {
+      --bg: #1d1d1f;
+      --surface: #2c2c2e;
+      --surface2: #1c1c1e;
+      --text: #f5f5f7;
+      --text2: #98989d;
+      --text3: #636366;
+      --border: rgba(255,255,255,0.12);
+      --shadow: 0 2px 12px rgba(0,0,0,0.35);
+      --shadow-l: 0 8px 32px rgba(0,0,0,0.5);
+      --blue: #0a84ff;
+      --blue-h: #1a90ff;
+      --green: #32d74b;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── 顶部导航 ─────────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px; height: 52px;
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    [data-theme="dark"] .topbar {
+      background: rgba(29,29,31,0.72);
+    }
+    .topbar-logo {
+      font-size: 17px; font-weight: 600; color: var(--text);
+      text-decoration: none; letter-spacing: -0.3px;
+    }
+    .topbar-actions { display: flex; gap: 10px; align-items: center; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 7px 18px; border-radius: 980px; font-size: 14px;
+      font-weight: 500; cursor: pointer; border: none; text-decoration: none;
+      transition: background 0.18s, opacity 0.18s;
+    }
+    .btn-ghost {
+      background: transparent; color: var(--blue);
+    }
+    .btn-ghost:hover { background: rgba(0,113,227,0.07); }
+    .btn-primary {
+      background: var(--blue); color: #fff;
+    }
+    .btn-primary:hover { background: var(--blue-h); }
+    .theme-btn {
+      background: transparent; border: none; cursor: pointer;
+      font-size: 18px; padding: 6px; border-radius: 50%;
+      color: var(--text2); transition: background 0.15s;
+    }
+    .theme-btn:hover { background: var(--border); }
+
+    /* ── Hero ─────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 100px 24px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    }
+    .hero-orb {
+      position: absolute; border-radius: 50%; filter: blur(72px);
+      opacity: 0.38;
+    }
+    .orb1 { width: 560px; height: 560px; top: -140px; left: calc(50% - 400px);
+      background: radial-gradient(circle, #5ac8fa, transparent); }
+    .orb2 { width: 480px; height: 480px; top: -80px; left: calc(50% + 60px);
+      background: radial-gradient(circle, #bf5af2, transparent); }
+    .orb3 { width: 340px; height: 340px; top: 160px; left: calc(50% - 120px);
+      background: radial-gradient(circle, #30d158, transparent); opacity: 0.22; }
+    [data-theme="dark"] .hero-orb { opacity: 0.22; }
+
+    .hero-content { position: relative; z-index: 1; max-width: 760px; margin: 0 auto; }
+    .hero-eyebrow {
+      display: inline-block; font-size: 13px; font-weight: 500; letter-spacing: 0.04em;
+      color: var(--blue); background: rgba(0,113,227,0.10);
+      padding: 4px 14px; border-radius: 980px; margin-bottom: 20px;
+    }
+    .hero-title {
+      font-size: clamp(38px, 6vw, 68px); font-weight: 700; letter-spacing: -1.5px;
+      line-height: 1.08; color: var(--text); margin-bottom: 20px;
+    }
+    .hero-title span { color: var(--blue); }
+    .hero-desc {
+      font-size: clamp(16px, 2.2vw, 20px); color: var(--text2);
+      max-width: 560px; margin: 0 auto 36px; line-height: 1.65;
+    }
+    .hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-lg { padding: 14px 32px; font-size: 16px; border-radius: 980px; }
+
+    /* ── 特性卡片 ─────────────────────────────────────────── */
+    .section { padding: 72px 24px; max-width: 1100px; margin: 0 auto; }
+    .section-title {
+      text-align: center; font-size: 34px; font-weight: 700;
+      letter-spacing: -0.6px; margin-bottom: 8px;
+    }
+    .section-sub {
+      text-align: center; color: var(--text2); font-size: 16px; margin-bottom: 48px;
+    }
+    .feature-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 28px 24px;
+      box-shadow: var(--shadow);
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .feature-card:hover {
+      box-shadow: var(--shadow-l);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      font-size: 32px; margin-bottom: 14px; display: block;
+    }
+    .feature-name {
+      font-size: 17px; font-weight: 600; margin-bottom: 8px;
+    }
+    .feature-desc { font-size: 14px; color: var(--text2); line-height: 1.6; }
+
+    /* ── 下载区 ───────────────────────────────────────────── */
+    .download-section {
+      background: var(--surface2);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .download-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .dl-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      text-align: center;
+      box-shadow: var(--shadow);
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .dl-card:hover { box-shadow: var(--shadow-l); transform: translateY(-2px); }
+    .dl-icon { font-size: 42px; }
+    .dl-platform { font-size: 17px; font-weight: 600; }
+    .dl-version { font-size: 12px; color: var(--text3); }
+    .btn-dl {
+      background: var(--blue); color: #fff; width: 100%;
+      padding: 10px 0; border-radius: 980px; font-size: 14px;
+      font-weight: 500; text-decoration: none; display: block;
+      transition: background 0.15s;
+    }
+    .btn-dl:hover { background: var(--blue-h); }
+    .btn-dl-ghost {
+      background: transparent; color: var(--blue);
+      border: 1.5px solid var(--blue);
+      width: 100%; padding: 9px 0; border-radius: 980px;
+      font-size: 14px; font-weight: 500; text-decoration: none; display: block;
+      transition: background 0.15s;
+    }
+    .btn-dl-ghost:hover { background: rgba(0,113,227,0.07); }
+
+    /* ── 登录入口 ─────────────────────────────────────────── */
+    .cta-section {
+      text-align: center; padding: 80px 24px;
+    }
+    .cta-box {
+      display: inline-flex; flex-direction: column; align-items: center;
+      gap: 16px; max-width: 480px;
+    }
+    .cta-title { font-size: 28px; font-weight: 700; letter-spacing: -0.4px; }
+    .cta-desc { color: var(--text2); font-size: 15px; }
+    .cta-btns { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+    /* ── 页脚 ─────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 32px;
+      text-align: center;
+      font-size: 13px; color: var(--text3);
+    }
+
+    @media (max-width: 600px) {
+      .topbar { padding: 0 16px; }
+      .hero { padding: 72px 16px 56px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- 顶部导航 -->
+  <header class="topbar">
+    <a class="topbar-logo" href="/">NAT Server</a>
+    <div class="topbar-actions">
+      <button class="theme-btn" onclick="toggleTheme()" title="切换主题">🌙</button>
+      <a class="btn btn-ghost" href="/login">登录</a>
+      <a class="btn btn-primary" href="/register">注册</a>
+    </div>
+  </header>
+
+  <!-- Hero 区 -->
+  <section class="hero">
+    <div class="hero-bg">
+      <div class="hero-orb orb1"></div>
+      <div class="hero-orb orb2"></div>
+      <div class="hero-orb orb3"></div>
+    </div>
+    <div class="hero-content">
+      <span class="hero-eyebrow">安全 · 高速 · 跨平台</span>
+      <h1 class="hero-title">让内网设备<br><span>随处可达</span></h1>
+      <p class="hero-desc">
+        NAT Server 是一款开源内网穿透服务，基于端对端加密，让你的设备在任何网络环境下都能被安全访问。
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary btn-lg" href="#download">立即下载客户端</a>
+        <a class="btn btn-ghost btn-lg" href="/register">免费注册</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 特性 -->
+  <div class="section">
+    <h2 class="section-title">为什么选择 NAT Server？</h2>
+    <p class="section-sub">企业级功能，开源透明，随时自托管</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <span class="feature-icon">🔒</span>
+        <div class="feature-name">端对端加密</div>
+        <p class="feature-desc">所有流量经由 NaCl/libsodium 加密，服务器无法解读数据内容，保护隐私安全。</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">⚡</span>
+        <div class="feature-name">低延迟穿透</div>
+        <p class="feature-desc">P2P 优先直连，中继兜底，智能路由选择最优路径，延迟最低、带宽最大化。</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🖥️</span>
+        <div class="feature-name">跨平台支持</div>
+        <p class="feature-desc">客户端支持 Windows、macOS、Linux，带原生 GUI，一键配置即可上手。</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">👥</span>
+        <div class="feature-name">多用户管理</div>
+        <p class="feature-desc">支持用户注册、设备绑定、订阅套餐，管理员可统一管控设备与流量。</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">📊</span>
+        <div class="feature-name">实时监控</div>
+        <p class="feature-desc">内置 Web 控制台，实时查看在线设备、流量统计和连接状态，一目了然。</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">🔧</span>
+        <div class="feature-name">自托管部署</div>
+        <p class="feature-desc">单二进制部署，支持 Docker，数据完全掌控在自己手中，零依赖外部服务。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 下载 -->
+  <div class="download-section" id="download">
+    <div class="section">
+      <h2 class="section-title">下载客户端</h2>
+      <p class="section-sub">选择你的平台，立即开始使用</p>
+      <div class="download-grid">
+        <div class="dl-card">
+          <span class="dl-icon">🪟</span>
+          <div class="dl-platform">Windows</div>
+          <div class="dl-version">Windows 10 / 11 (x64)</div>
+          <a class="btn-dl" href="/download/nat-client-windows-x64.exe">下载 .exe</a>
+          <a class="btn-dl-ghost" href="/download/nat-client-windows-x64.zip">下载 .zip</a>
+        </div>
+        <div class="dl-card">
+          <span class="dl-icon">🍎</span>
+          <div class="dl-platform">macOS</div>
+          <div class="dl-version">macOS 12+ · Apple Silicon &amp; Intel</div>
+          <a class="btn-dl" href="/download/nat-client-macos-universal.dmg">下载 .dmg</a>
+          <a class="btn-dl-ghost" href="/download/nat-client-macos-universal.tar.gz">下载 .tar.gz</a>
+        </div>
+        <div class="dl-card">
+          <span class="dl-icon">🐧</span>
+          <div class="dl-platform">Linux</div>
+          <div class="dl-version">x86_64 · glibc 2.17+</div>
+          <a class="btn-dl" href="/download/nat-client-linux-x64.tar.gz">下载 .tar.gz</a>
+          <a class="btn-dl-ghost" href="/download/nat-client-linux-x64.deb">下载 .deb</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 登录/注册入口 -->
+  <section class="cta-section">
+    <div class="cta-box">
+      <h2 class="cta-title">已有账号？马上登录</h2>
+      <p class="cta-desc">登录后可管理设备、查看流量统计、升级订阅套餐。</p>
+      <div class="cta-btns">
+        <a class="btn btn-primary btn-lg" href="/login">登录控制台</a>
+        <a class="btn btn-ghost btn-lg" href="/register">创建账号</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    &copy; 2025 NAT Server &nbsp;·&nbsp; 开源内网穿透服务 &nbsp;·&nbsp;
+    <a href="https://github.com" style="color:var(--text3);text-decoration:none;">GitHub</a>
+  </footer>
+
+  <script>
+    // 主题初始化
+    (function() {
+      var saved = localStorage.getItem('theme');
+      if (saved) document.documentElement.setAttribute('data-theme', saved);
+      else if (window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+
+    function toggleTheme() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      var next = cur === 'dark' ? '' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+      document.querySelector('.theme-btn').textContent = next === 'dark' ? '☀️' : '🌙';
+    }
+
+    // 初始化图标
+    (function() {
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      document.querySelector('.theme-btn').textContent = isDark ? '☀️' : '🌙';
+    })();
+  </script>
+</body>
+</html>
