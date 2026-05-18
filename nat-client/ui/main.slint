@@ -2556,11 +2556,14 @@ export component AppWindow inherits Window {
                 background: @radial-gradient(circle, Palette.orb-c, #00000000);
             }
 
-            if page == 0: ScrollView {
+            ScrollView {
+                visible: page == 0;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                DashboardPage {
+                viewport-height: page0.preferred-height;
+                page0 := DashboardPage {
                     width: parent.viewport-width;
                     online <=> root.online;
                     peer-id <=> root.peer-id;
@@ -2584,11 +2587,14 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if page == 1: ScrollView {
+            ScrollView {
+                visible: page == 1;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                ConnectionsPage {
+                viewport-height: page1.preferred-height;
+                page1 := ConnectionsPage {
                     width: parent.viewport-width;
                     items <=> root.connections;
                     close-conn(u) => {
@@ -2597,11 +2603,14 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if page == 2: ScrollView {
+            ScrollView {
+                visible: page == 2;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                PeersPage {
+                viewport-height: page2.preferred-height;
+                page2 := PeersPage {
                     width: parent.viewport-width;
                     items <=> root.lan-peers;
                     discovering <=> root.discovering;
@@ -2614,11 +2623,14 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if page == 3: ScrollView {
+            ScrollView {
+                visible: page == 3;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                AccountPage {
+                viewport-height: page3.preferred-height;
+                page3 := AccountPage {
                     width: parent.viewport-width;
                     logged-in <=> root.logged-in;
                     username <=> root.username;
@@ -2656,11 +2668,14 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if page == 4: ScrollView {
+            ScrollView {
+                visible: page == 4;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                DevicesPage {
+                viewport-height: page4.preferred-height;
+                page4 := DevicesPage {
                     width: parent.viewport-width;
                     items <=> root.devices;
                     logged-in <=> root.logged-in;
@@ -2674,11 +2689,14 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if page == 5: ScrollView {
+            ScrollView {
+                visible: page == 5;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                SettingsPage {
+                viewport-height: page5.preferred-height;
+                page5 := SettingsPage {
                     width: parent.viewport-width;
                     server-addr <=> root.cfg-server;
                     relay-server <=> root.cfg-relay;
@@ -2722,11 +2740,14 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if page == 6: ScrollView {
+            ScrollView {
+                visible: page == 6;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                TunnelPage {
+                viewport-height: page6.preferred-height;
+                page6 := TunnelPage {
                     width: parent.viewport-width;
                     socks5-enabled <=> root.socks5-enabled;
                     socks5-port-str <=> root.socks5-port-str;
@@ -2746,11 +2767,14 @@ export component AppWindow inherits Window {
                 }
             }
 
-            if page == 7: ScrollView {
+            ScrollView {
+                visible: page == 7;
+                x: 0; y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                PaymentPage {
+                viewport-height: page7.preferred-height;
+                page7 := PaymentPage {
                     width: parent.viewport-width;
                     plans <=> root.pay-plans;
                     loading <=> root.pay-loading;

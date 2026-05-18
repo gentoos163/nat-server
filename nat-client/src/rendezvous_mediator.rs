@@ -19,7 +19,7 @@ use core_common::{
     rendezvous_codec::{self, Protocol},
     rendezvous_proto::{
         register_pk_response, rendezvous_message, FetchLocalAddr, LocalAddr, PunchHole,
-        PunchHoleSent, RegisterPk, RelayResponse, RendezvousMessage, RequestRelay,
+        PunchHoleSent, RegisterPeer, RegisterPk, RelayResponse, RendezvousMessage, RequestRelay,
     },
     sleep,
     socket_client::{self, connect_tcp},
@@ -178,15 +178,18 @@ impl RendezvousMediator {
                         bail!("[mediator] {} 心跳超时，重新连接", host);
                     }
 
-                    // 需要重新注册时发送 RegisterPk / RegisterPeer
+                    // 需要重新注册时发送 RegisterPk；已注册时定期发 RegisterPeer 保活
                     let need_reg = !ClientConfig::get_key_confirmed()
                         || !ClientConfig::get_host_key_confirmed(&host_prefix);
                     let elapsed = last_register_sent
                         .map(|t| t.elapsed().as_millis() as i64)
                         .unwrap_or(REG_INTERVAL);
-                    if need_reg && elapsed >= REG_INTERVAL {
-                        log::info!("=============elapsed:{:?}  REG_INTERVAL: {:?} need_reg:{:?}====", elapsed,REG_INTERVAL,need_reg);
-                        rz.register_pk(&mut conn).await?;
+                    if elapsed >= REG_INTERVAL {
+                        if need_reg {
+                            rz.register_pk(&mut conn).await?;
+                        } else {
+                            rz.register_peer(&mut conn).await?;
+                        }
                         last_register_sent = Some(Instant::now());
                     }
                 }
@@ -291,6 +294,18 @@ impl RendezvousMediator {
     }
 
     // ── 注册 ─────────────────────────────────────────────────────────────────
+
+    /// 发送 RegisterPeer（已注册后的周期性保活心跳）
+    async fn register_peer(&self, conn: &mut core_common::Stream) -> ResultType<()> {
+        let mut msg = RendezvousMessage::new();
+        msg.set_register_peer(RegisterPeer {
+            id: ClientConfig::get_id(),
+            ..Default::default()
+        });
+        send_rendezvous(conn, &msg, self.wire).await?;
+        log::debug!("[mediator] RegisterPeer 保活已发送至 {}", self.host);
+        Ok(())
+    }
 
     /// 发送 RegisterPk（首次注册或 UUID 不匹配后调用）
     ///

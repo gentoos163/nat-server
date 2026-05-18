@@ -6,6 +6,7 @@
 - [中继服务器配置（hbbr.toml）](#中继服务器配置-hbbrtoml)
 - [客户端配置文件](#客户端配置文件)
 - [客户端命令行参数](#客户端命令行参数)
+- [初始管理员设置](#初始管理员设置)
 - [管理后台运行时设置](#管理后台运行时设置)
 - [端口转发规则](#端口转发规则)
 - [代理设置](#代理设置)
@@ -296,6 +297,40 @@ nat-client remove-rule -r <rule_id>
 nat-client scan-services          # 快速扫描 20 个知名端口（约 200ms）
 nat-client scan-services --all    # 全量扫描所有端口，含进程名和绑定地址
 ```
+
+---
+
+## 初始管理员设置
+
+服务器启动时，若数据库中**还没有任何管理员账号**，会自动执行一次 Bootstrap 提升逻辑：
+
+1. 如果设置了环境变量 `BOOTSTRAP_ADMIN_USERNAME`，则将该用户名对应的账号提升为管理员。
+2. 若未设置该变量，则自动将**最早注册的账号**（`id` 最小）提升为管理员，并在日志中打印警告。
+
+### 操作步骤
+
+```bash
+# 1. 先通过客户端或 API 正常注册账号
+nat-client register -u admin -e admin@example.com -p yourpassword
+
+# 2. 设置环境变量后启动（或重启）服务器
+BOOTSTRAP_ADMIN_USERNAME=admin ./nat-server
+```
+
+或在 `production.env` / Docker Compose 中配置：
+
+```env
+BOOTSTRAP_ADMIN_USERNAME=admin
+```
+
+> **注意**：Bootstrap 仅在数据库中**没有任何管理员**时触发一次，之后再修改该变量不会产生任何效果。若需要为已有用户调整角色，请使用管理员 API：
+>
+> ```bash
+> curl -X PUT -H "Authorization: Bearer $ADMIN_TOKEN" \
+>   -H "Content-Type: application/json" \
+>   -d '{"role":"admin"}' \
+>   http://nat.example.com:8080/api/users/{user_id}/role
+> ```
 
 ---
 

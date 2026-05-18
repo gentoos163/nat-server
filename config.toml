@@ -1,6 +1,6 @@
 # hbbs (RustDesk ID/Rendezvous Server) 配置文件
 # 使用方法: ./target/release/hbbs -c config.toml
-
+BOOTSTRAP_ADMIN_USERNAME=gentoos
 # 监听端口，默认 21116
 port = 21116
 

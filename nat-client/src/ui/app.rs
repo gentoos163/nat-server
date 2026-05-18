@@ -2,16 +2,16 @@
 //!
 //! 负责：
 //! 1. 将 Slint 窗口的所有 `callback` 连接到 IPC 命令
-//! 2. 启动定时器，轮询 IPC 获取最新状态并推送到 UI
+//! 2. 启动定时器，在后台线程轮询 IPC，再用 invoke_from_event_loop 推送到 UI
 //! 3. 驱动托盘事件循环
 //!
 //! 架构：
 //! ```text
 //!   Slint 主线程
 //!   ├─ UI 渲染（Slint event loop）
-//!   ├─ Slint Timer (200ms) ──► poll_status() ──► IPC ──► set_xxx()
+//!   ├─ Slint Timer (500ms) ──► spawn thread ──► IPC ──► invoke_from_event_loop ──► set_xxx()
 //!   ├─ Slint Timer (50ms)  ──► TrayManager::poll() ──► 窗口 show/hide
-//!   └─ 所有 callback         ──► IPC JSON 命令
+//!   └─ 所有 callback         ──► spawn thread ──► IPC ──► invoke_from_event_loop
 //!
 //!   tokio Runtime（后台线程池）
 //!   ├─ RendezvousMediator::start_all()
@@ -26,11 +26,76 @@ use crate::ui::tray::{TrayAction, TrayManager};
 use core_common::log;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 
 slint::include_modules!();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 轮询快照（纯 Rust 类型，可跨线程传递）
+// ──────────────────────────────────────────────────────────────────────────────
+
+struct RawConn {
+    uuid: String,
+    conn_type: String,
+    peer_addr: String,
+    local_port: i32,
+    bytes_sent: String,
+    bytes_recv: String,
+    created_at: String,
+}
+
+struct RawPeer {
+    id: String,
+    ip: String,
+    hostname: String,
+    username: String,
+    platform: String,
+    online: bool,
+}
+
+struct RawDevice {
+    id: i32,
+    device_id: String,
+    device_name: String,
+    is_active: bool,
+    created_at: String,
+}
+
+struct RawRule {
+    rule_id: String,
+    name: String,
+    target_host: String,
+    target_port: String,
+    peer_id_filter: String,
+}
+
+struct RawSub {
+    plan: String,
+    device_used: i32,
+    device_limit: i32,
+    expires: String,
+}
+
+struct PollSnapshot {
+    online: bool,
+    nat_type: i32,
+    peer_id: String,
+    server_addr: String,
+    connections: Vec<RawConn>,
+    peers: Vec<RawPeer>,
+    logged_in: bool,
+    username: String,
+    role: String,
+    token_remaining_secs: i64,
+    sub: Option<RawSub>,
+    devices: Option<Vec<RawDevice>>,
+    rules: Option<Vec<RawRule>>,
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // 入口函数
@@ -38,22 +103,16 @@ slint::include_modules!();
 
 /// 运行 GUI（在主线程阻塞，直到窗口关闭）
 pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
-    // 创建 Slint 主窗口
     let window = AppWindow::new()?;
 
-    // 初始化配置显示值
     init_config_fields(&window);
 
-    // 设置应用 Logo（窗口标题栏图标 + 侧边栏）
     if let Some(logo) = load_logo_image() {
         window.set_app_logo(logo);
     }
 
-    // 设置当前版本号
     window.set_update_current_ver(env!("CARGO_PKG_VERSION").into());
 
-    // 启动后台自动检查线程（参考 RustDesk start_auto_update_check）
-    // 30 秒后首次检查，之后每 24 小时一次；发现新版本时回调推送到 UI
     {
         let win = window.as_weak();
         let api_url = ClientConfig::get_api_url();
@@ -75,16 +134,13 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
         }
     }
 
-    // 初始化主题
     window
         .global::<ThemeState>()
         .set_dark(ClientConfig::get_dark_mode());
 
-    // 应用当前语言翻译
     let lang = ClientConfig::get_language();
     apply_translations(&window, &lang);
 
-    // ── 系统托盘 ─────────────────────────────────────────────────────────────
     let tray = match TrayManager::new() {
         Ok(t) => {
             log::info!("[gui] 系统托盘已创建");
@@ -96,23 +152,36 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
         }
     };
 
-    // ── 绑定所有 Slint 回调 ──────────────────────────────────────────────────
     bind_callbacks(&window, ipc_port);
 
-    // ── 状态轮询 Timer（每 500ms）────────────────────────────────────────────
+    // ── 状态轮询 Timer（每 500ms 触发，后台线程执行 IPC）────────────────────
     {
         let win = window.as_weak();
         let tray_ref = tray.clone();
+        let polling = Arc::new(AtomicBool::new(false));
         let timer = slint::Timer::default();
         timer.start(
             slint::TimerMode::Repeated,
             Duration::from_millis(500),
             move || {
-                let Some(w) = win.upgrade() else { return };
-                poll_and_update(&w, ipc_port, tray_ref.clone());
+                // 上次轮询还未完成则跳过，避免线程堆积
+                if polling.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+                let page = win.upgrade().map(|w| w.get_page()).unwrap_or(0);
+                let win2 = win.clone();
+                let polling2 = polling.clone();
+                std::thread::spawn(move || {
+                    let snap = collect_poll_data(ipc_port, page);
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(w) = win2.upgrade() {
+                            apply_poll_snapshot(&w, snap);
+                        }
+                        polling2.store(false, Ordering::SeqCst);
+                    });
+                });
             },
         );
-        // 让 timer 随窗口生命周期存在（泄漏给全局，简单有效）
         std::mem::forget(timer);
     }
 
@@ -124,12 +193,16 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
             slint::TimerMode::Repeated,
             Duration::from_millis(50),
             move || {
-                let guard = match tray_ref.lock() {
+                let mut guard = match tray_ref.lock() {
                     Ok(g) => g,
                     Err(_) => return,
                 };
+                // 从窗口同步 online 状态到托盘 tooltip
+                if let Some(w) = win.upgrade() {
+                    guard.set_online(w.get_online());
+                }
                 if let Some(action) = guard.poll() {
-                    drop(guard); // 释放锁再操作窗口
+                    drop(guard);
                     let Some(w) = win.upgrade() else { return };
                     handle_tray_action(&w, action);
                 }
@@ -138,24 +211,262 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
         std::mem::forget(timer);
     }
 
-    // ── 立即拉取一次状态（延迟 300ms，等待守护进程 IPC 就绪）────────────────
+    // ── 启动后立即拉取一次（延迟 400ms 等 IPC 服务就绪）───────────────────
     {
-        let win = window.as_weak(); // Weak<T> 实现了 Send
+        let win = window.as_weak();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(400));
+            let page = 0i32;
+            let snap = collect_poll_data(ipc_port, page);
             let _ = slint::invoke_from_event_loop(move || {
                 if let Some(w) = win.upgrade() {
-                    poll_and_update(&w, ipc_port, None);
+                    apply_poll_snapshot(&w, snap);
                 }
             });
         });
     }
 
-    // 启动 Slint 事件循环（阻塞直到窗口关闭）
     let result = window.run();
-    // 窗口关闭后停止后台更新检查线程
     crate::updater::stop_auto_update();
     result
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 后台收集轮询数据（在普通线程执行，不得调用任何 Slint API）
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn collect_poll_data(ipc_port: u16, page: i32) -> PollSnapshot {
+    let status_raw = ipc_call(ipc_port, r#"{"cmd":"get_status"}"#);
+    let config_raw = ipc_call(ipc_port, r#"{"cmd":"get_config"}"#);
+    let conns_raw  = ipc_call(ipc_port, r#"{"cmd":"get_connections"}"#);
+    let peers_raw  = ipc_call(ipc_port, r#"{"cmd":"get_peers"}"#);
+    let auth_raw   = ipc_call(ipc_port, r#"{"cmd":"auth_status"}"#);
+
+    let sv = serde_json::from_str::<serde_json::Value>(&status_raw).unwrap_or_default();
+    let cv = serde_json::from_str::<serde_json::Value>(&config_raw).unwrap_or_default();
+    let connv = serde_json::from_str::<serde_json::Value>(&conns_raw).unwrap_or_default();
+    let peerv = serde_json::from_str::<serde_json::Value>(&peers_raw).unwrap_or_default();
+    let authv = serde_json::from_str::<serde_json::Value>(&auth_raw).unwrap_or_default();
+
+    let online   = sv["online"].as_bool().unwrap_or(false);
+    let nat_type = sv["nat_type"].as_i64().unwrap_or(0) as i32;
+    let peer_id  = cv["id"].as_str().unwrap_or("").to_owned();
+    let server_addr = ClientConfig::get().rendezvous_servers;
+
+    let connections = connv["connections"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|c| RawConn {
+                    uuid:       c["uuid"].as_str().unwrap_or("").to_owned(),
+                    conn_type:  c["conn_type"].as_str().unwrap_or("").to_owned(),
+                    peer_addr:  c["peer_addr"].as_str().unwrap_or("").to_owned(),
+                    local_port: c["local_port"].as_i64().unwrap_or(0) as i32,
+                    bytes_sent: format_bytes(c["bytes_sent"].as_u64().unwrap_or(0)),
+                    bytes_recv: format_bytes(c["bytes_recv"].as_u64().unwrap_or(0)),
+                    created_at: format_ts(c["created_at"].as_u64().unwrap_or(0)),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let peers = peerv["peers"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|p| RawPeer {
+                    id:       p["id"].as_str().unwrap_or("").to_owned(),
+                    ip:       p["ip"].as_str().unwrap_or("").to_owned(),
+                    hostname: p["hostname"].as_str().unwrap_or("").to_owned(),
+                    username: p["username"].as_str().unwrap_or("").to_owned(),
+                    platform: p["platform"].as_str().unwrap_or("").to_owned(),
+                    online:   p["online"].as_bool().unwrap_or(false),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let (logged_in, username, role, token_remaining_secs) =
+        if let Some(a) = authv.get("auth") {
+            (
+                a["logged_in"].as_bool().unwrap_or(false),
+                a["username"].as_str().unwrap_or("").to_owned(),
+                a["role"].as_str().unwrap_or("").to_owned(),
+                a["token_remaining_secs"].as_i64().unwrap_or(0),
+            )
+        } else {
+            (false, String::new(), String::new(), 0)
+        };
+
+    let sub = if logged_in {
+        let sub_raw = ipc_call(ipc_port, r#"{"cmd":"auth_subscription"}"#);
+        let sv2 = serde_json::from_str::<serde_json::Value>(&sub_raw).unwrap_or_default();
+        sv2.get("subscription").map(|s| {
+            let exp = s["expires_at"].as_str().unwrap_or("");
+            let expires = if exp.is_empty() {
+                String::new()
+            } else if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(exp) {
+                dt.format("%Y-%m-%d").to_string()
+            } else {
+                exp.to_owned()
+            };
+            RawSub {
+                plan:         s["plan_display_name"].as_str().unwrap_or("免费版").to_owned(),
+                device_used:  s["device_used"].as_i64().unwrap_or(0) as i32,
+                device_limit: s["device_limit"].as_i64().unwrap_or(0) as i32,
+                expires,
+            }
+        })
+    } else {
+        None
+    };
+
+    let devices = if page == 4 && logged_in {
+        let dev_raw = ipc_call(ipc_port, r#"{"cmd":"auth_list_devices"}"#);
+        let dv = serde_json::from_str::<serde_json::Value>(&dev_raw).unwrap_or_default();
+        Some(
+            dv["devices"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .map(|d| RawDevice {
+                            id:          d["id"].as_i64().unwrap_or(0) as i32,
+                            device_id:   d["device_id"].as_str().unwrap_or("").to_owned(),
+                            device_name: d["device_name"].as_str().unwrap_or("").to_owned(),
+                            is_active:   d["is_active"].as_bool().unwrap_or(false),
+                            created_at:  d["created_at"].as_str().unwrap_or("").to_owned(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        )
+    } else {
+        None
+    };
+
+    let rules = if page == 6 {
+        let rules_raw = ipc_call(ipc_port, r#"{"cmd":"list_rules"}"#);
+        let rv = serde_json::from_str::<serde_json::Value>(&rules_raw).unwrap_or_default();
+        Some(
+            rv["rules"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .map(|r| RawRule {
+                            rule_id:       r["rule_id"].as_str().unwrap_or("").to_owned(),
+                            name:          r["name"].as_str().unwrap_or("").to_owned(),
+                            target_host:   r["target_host"].as_str().unwrap_or("127.0.0.1").to_owned(),
+                            target_port:   r["target_port"].as_u64().unwrap_or(0).to_string(),
+                            peer_id_filter: r["peer_id_filter"].as_str().unwrap_or("").to_owned(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        )
+    } else {
+        None
+    };
+
+    PollSnapshot {
+        online,
+        nat_type,
+        peer_id,
+        server_addr,
+        connections,
+        peers,
+        logged_in,
+        username,
+        role,
+        token_remaining_secs,
+        sub,
+        devices,
+        rules,
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 将快照应用到 UI（必须在 Slint 主线程调用）
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn apply_poll_snapshot(w: &AppWindow, snap: PollSnapshot) {
+    w.set_online(snap.online);
+    w.set_nat_type(nat_type_name(snap.nat_type as i64).into());
+
+    w.set_peer_id(snap.peer_id.as_str().into());
+    w.set_server_addr(snap.server_addr.as_str().into());
+
+    w.set_connections(ModelRc::new(VecModel::from(
+        snap.connections
+            .into_iter()
+            .map(|c| ActiveConn {
+                uuid:       c.uuid.into(),
+                conn_type:  c.conn_type.into(),
+                peer_addr:  c.peer_addr.into(),
+                local_port: c.local_port,
+                bytes_sent: c.bytes_sent.into(),
+                bytes_recv: c.bytes_recv.into(),
+                created_at: c.created_at.into(),
+            })
+            .collect::<Vec<_>>(),
+    )));
+
+    w.set_lan_peers(ModelRc::new(VecModel::from(
+        snap.peers
+            .into_iter()
+            .map(|p| LanPeer {
+                id:       p.id.into(),
+                ip:       p.ip.into(),
+                hostname: p.hostname.into(),
+                username: p.username.into(),
+                platform: p.platform.into(),
+                online:   p.online,
+            })
+            .collect::<Vec<_>>(),
+    )));
+
+    w.set_logged_in(snap.logged_in);
+    w.set_username(snap.username.as_str().into());
+    w.set_role(snap.role.as_str().into());
+    w.set_token_remaining(format_duration(snap.token_remaining_secs).into());
+
+    if let Some(s) = snap.sub {
+        w.set_sub_plan(s.plan.as_str().into());
+        w.set_sub_device_used(s.device_used);
+        w.set_sub_device_limit(s.device_limit);
+        w.set_sub_expires(s.expires.as_str().into());
+    }
+
+    if let Some(devices) = snap.devices {
+        w.set_devices_loading(false);
+        w.set_devices(ModelRc::new(VecModel::from(
+            devices
+                .into_iter()
+                .map(|d| BoundDevice {
+                    id:          d.id,
+                    device_id:   d.device_id.into(),
+                    device_name: d.device_name.into(),
+                    is_active:   d.is_active,
+                    created_at:  d.created_at.into(),
+                })
+                .collect::<Vec<_>>(),
+        )));
+    }
+
+    if let Some(rules) = snap.rules {
+        w.set_tunnel_rules_loading(false);
+        w.set_tunnel_rules(ModelRc::new(VecModel::from(
+            rules
+                .into_iter()
+                .map(|r| ForwardRule {
+                    rule_id:        r.rule_id.into(),
+                    name:           r.name.into(),
+                    target_host:    r.target_host.into(),
+                    target_port:    r.target_port.into(),
+                    peer_id_filter: r.peer_id_filter.into(),
+                })
+                .collect::<Vec<_>>(),
+        )));
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -168,22 +479,15 @@ fn init_config_fields(w: &AppWindow) {
     w.set_cfg_relay(cfg.relay_server.as_str().into());
     w.set_cfg_api_url(cfg.api_url.as_str().into());
     w.set_cfg_ipc_port(cfg.ipc_port.to_string().as_str().into());
-    w.set_peer_id(ClientConfig::get_id().as_str().into());
 
-    // 代理配置
-    let (s5_en, s5_port, s5_peer) = ClientConfig::get_socks5_config();
+    let (s5_en, s5_peer, s5_port) = ClientConfig::get_socks5_config();
     w.set_socks5_enabled(s5_en);
-    w.set_socks5_exit_peer(s5_peer.as_str().into());
-    w.set_socks5_port_str(s5_port.to_string().as_str().into());
-}
+    w.set_socks5_exit_peer(s5_peer.to_string().as_str().into());
+    w.set_socks5_port_str(s5_port.as_str().into());
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 多语言翻译应用：将翻译字符串推送到 Slint Tr global
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn apply_translations(w: &AppWindow, lang: &str) {
-    let tr = i18n::get(lang);
+    let tr = i18n::get("zh");
     let g = w.global::<Tr>();
+
     g.set_nav_dashboard(tr.nav_dashboard.into());
     g.set_nav_connections(tr.nav_connections.into());
     g.set_nav_peers(tr.nav_peers.into());
@@ -258,153 +562,35 @@ fn apply_translations(w: &AppWindow, lang: &str) {
     g.set_lang_en(tr.lang_en.into());
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 状态轮询：通过 IPC 获取最新数据并更新 Slint 属性
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn poll_and_update(w: &AppWindow, ipc_port: u16, tray: Option<Arc<Mutex<TrayManager>>>) {
-    // 通过阻塞方式调用 IPC（IPC 连接非常快，< 5ms）
-    let status = blocking_ipc(ipc_port, r#"{"cmd":"get_status"}"#);
-    let config = blocking_ipc(ipc_port, r#"{"cmd":"get_config"}"#);
-    let conns = blocking_ipc(ipc_port, r#"{"cmd":"get_connections"}"#);
-    let peers = blocking_ipc(ipc_port, r#"{"cmd":"get_peers"}"#);
-    let auth = blocking_ipc(ipc_port, r#"{"cmd":"auth_status"}"#);
-
-    // ── 在线状态 ─────────────────────────────────────────────────────────────
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&status) {
-        let online = v["online"].as_bool().unwrap_or(false);
-        w.set_online(online);
-        let nat_raw = v["nat_type"].as_i64().unwrap_or(0);
-        w.set_nat_type(nat_type_name(nat_raw).into());
-
-        // 更新托盘图标
-        if let Some(t) = &tray {
-            if let Ok(mut g) = t.lock() {
-                g.set_online(online);
-            }
-        }
-    }
-
-    // ── 服务器地址 ────────────────────────────────────────────────────────────
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&config) {
-        if let Some(id) = v["id"].as_str() {
-            w.set_peer_id(id.into());
-        }
-        // 从配置文件拿服务器地址
-        let cfg = ClientConfig::get();
-        w.set_server_addr(cfg.rendezvous_servers.as_str().into());
-    }
-
-    // ── 活跃连接 ──────────────────────────────────────────────────────────────
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&conns) {
-        if let Some(arr) = v["connections"].as_array() {
-            let items: Vec<ActiveConn> = arr
-                .iter()
-                .map(|c| ActiveConn {
-                    uuid: c["uuid"].as_str().unwrap_or("").into(),
-                    conn_type: c["conn_type"].as_str().unwrap_or("").into(),
-                    peer_addr: c["peer_addr"].as_str().unwrap_or("").into(),
-                    local_port: c["local_port"].as_i64().unwrap_or(0) as i32,
-                    bytes_sent: format_bytes(c["bytes_sent"].as_u64().unwrap_or(0)).into(),
-                    bytes_recv: format_bytes(c["bytes_recv"].as_u64().unwrap_or(0)).into(),
-                    created_at: format_ts(c["created_at"].as_u64().unwrap_or(0)).into(),
-                })
-                .collect();
-            w.set_connections(ModelRc::new(VecModel::from(items)));
-        }
-    }
-
-    // ── LAN 节点 ──────────────────────────────────────────────────────────────
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&peers) {
-        if let Some(arr) = v["peers"].as_array() {
-            let items: Vec<LanPeer> = arr
-                .iter()
-                .map(|p| LanPeer {
-                    id: p["id"].as_str().unwrap_or("").into(),
-                    ip: p["ip"].as_str().unwrap_or("").into(),
-                    hostname: p["hostname"].as_str().unwrap_or("").into(),
-                    username: p["username"].as_str().unwrap_or("").into(),
-                    platform: p["platform"].as_str().unwrap_or("").into(),
-                    online: p["online"].as_bool().unwrap_or(false),
-                })
-                .collect();
-            w.set_lan_peers(ModelRc::new(VecModel::from(items)));
-        }
-    }
-
-    // ── 认证状态 ──────────────────────────────────────────────────────────────
-    let logged_in = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&auth) {
-        if let Some(a) = v.get("auth") {
-            let logged_in = a["logged_in"].as_bool().unwrap_or(false);
-            w.set_logged_in(logged_in);
-            w.set_username(a["username"].as_str().unwrap_or("").into());
-            w.set_role(a["role"].as_str().unwrap_or("").into());
-
-            let remaining = a["token_remaining_secs"].as_i64().unwrap_or(0);
-            w.set_token_remaining(format_duration(remaining).into());
-            logged_in
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    // ── 转发规则（仅在隧道接入页时拉取）─────────────────────────────────────
-    if w.get_page() == 6 {
-        refresh_rules(w, ipc_port);
-    }
-
-    // ── 订阅信息（仅登录时拉取）────────────────────────────────────────────────
-    if logged_in {
-        let sub_resp = blocking_ipc(ipc_port, r#"{"cmd":"auth_subscription"}"#);
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&sub_resp) {
-            if let Some(s) = v.get("subscription") {
-                w.set_sub_plan(s["plan_display_name"].as_str().unwrap_or("免费版").into());
-                w.set_sub_device_used(s["device_used"].as_i64().unwrap_or(0) as i32);
-                w.set_sub_device_limit(s["device_limit"].as_i64().unwrap_or(0) as i32);
-                let exp = s["expires_at"].as_str().unwrap_or("");
-                let exp_display = if exp.is_empty() {
-                    String::new()
-                } else if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(exp) {
-                    dt.format("%Y-%m-%d").to_string()
-                } else {
-                    exp.to_owned()
-                };
-                w.set_sub_expires(exp_display.into());
-            }
-        }
-    }
+fn apply_translations(w: &AppWindow, lang: &str) {
+    let tr = i18n::get(lang);
+    let g = w.global::<Tr>();
+    g.set_nav_dashboard(tr.nav_dashboard.into());
+    g.set_nav_connections(tr.nav_connections.into());
+    g.set_nav_peers(tr.nav_peers.into());
+    g.set_nav_account(tr.nav_account.into());
+    g.set_nav_devices(tr.nav_devices.into());
+    g.set_nav_settings(tr.nav_settings.into());
+    g.set_btn_save(tr.btn_save.into());
+    g.set_btn_cancel(tr.btn_cancel.into());
+    g.set_btn_refresh(tr.btn_refresh.into());
+    g.set_btn_add(tr.btn_add.into());
+    g.set_btn_delete(tr.btn_delete.into());
+    g.set_btn_connect(tr.btn_connect.into());
+    g.set_btn_login(tr.btn_login.into());
+    g.set_btn_logout(tr.btn_logout.into());
+    g.set_btn_register(tr.btn_register.into());
+    g.set_btn_change_password(tr.btn_change_password.into());
+    g.set_status_online(tr.status_online.into());
+    g.set_status_offline(tr.status_offline.into());
+    g.set_status_loading(tr.status_loading.into());
+    g.set_status_processing(tr.status_processing.into());
+    g.set_lang_zh(tr.lang_zh.into());
+    g.set_lang_en(tr.lang_en.into());
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 转发规则列表刷新
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn refresh_rules(w: &AppWindow, ipc_port: u16) {
-    w.set_tunnel_rules_loading(true);
-    let resp = blocking_ipc(ipc_port, r#"{"cmd":"list_rules"}"#);
-    w.set_tunnel_rules_loading(false);
-
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-        if let Some(arr) = v["rules"].as_array() {
-            let items: Vec<ForwardRule> = arr
-                .iter()
-                .map(|r| ForwardRule {
-                    rule_id:        r["rule_id"].as_str().unwrap_or("").into(),
-                    name:           r["name"].as_str().unwrap_or("").into(),
-                    target_host:    r["target_host"].as_str().unwrap_or("127.0.0.1").into(),
-                    target_port:    r["target_port"].as_u64().unwrap_or(0).to_string().into(),
-                    peer_id_filter: r["peer_id_filter"].as_str().unwrap_or("").into(),
-                })
-                .collect();
-            w.set_tunnel_rules(ModelRc::new(VecModel::from(items)));
-        }
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// 回调绑定：将 Slint callbacks 连接到 IPC 命令
+// 回调绑定
 // ──────────────────────────────────────────────────────────────────────────────
 
 fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
@@ -413,7 +599,16 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
         let win = w.as_weak();
         w.on_do_refresh(move || {
             let Some(w) = win.upgrade() else { return };
-            poll_and_update(&w, ipc_port, None);
+            let page = w.get_page();
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let snap = collect_poll_data(ipc_port, page);
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = win2.upgrade() {
+                        apply_poll_snapshot(&w, snap);
+                    }
+                });
+            });
         });
     }
 
@@ -424,29 +619,29 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             let Some(w) = win.upgrade() else { return };
             w.set_connecting(true);
             w.set_connect_result("".into());
-
-            let peer_id = peer_id.to_string();
-            let port_str = local_port.to_string();
             let cmd = format!(
                 r#"{{"cmd":"connect","peer_id":"{}","local_port":{}}}"#,
                 peer_id,
-                port_str.parse::<u16>().unwrap_or(0)
+                local_port.to_string().parse::<u16>().unwrap_or(0)
             );
-
-            let win2 = win.upgrade().unwrap();
-            let resp = blocking_ipc(ipc_port, &cmd);
-            win2.set_connecting(false);
-
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-                if let Some(port) = v["local_port"].as_u64() {
-                    win2.set_connect_result(
-                        format!("✅ 隧道已建立！连接 127.0.0.1:{} 访问对端", port).into(),
-                    );
-                } else {
-                    let err = v["error"].as_str().unwrap_or("未知错误");
-                    win2.set_connect_result(format!("❌ {}", err).into());
-                }
-            }
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp = ipc_call(ipc_port, &cmd);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_connecting(false);
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                        if let Some(port) = v["local_port"].as_u64() {
+                            w.set_connect_result(
+                                format!("✅ 隧道已建立！连接 127.0.0.1:{} 访问对端", port).into(),
+                            );
+                        } else {
+                            let err = v["error"].as_str().unwrap_or("未知错误");
+                            w.set_connect_result(format!("❌ {}", err).into());
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -456,26 +651,23 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
         w.on_do_discover(move || {
             let Some(w) = win.upgrade() else { return };
             w.set_discovering(true);
-
-            // 发现命令耗时 ~3s，放后台线程
             let win2 = w.as_weak();
             std::thread::spawn(move || {
-                let resp = blocking_ipc(ipc_port, r#"{"cmd":"discover"}"#);
+                let resp = ipc_call(ipc_port, r#"{"cmd":"discover"}"#);
                 let _ = slint::invoke_from_event_loop(move || {
                     let Some(w) = win2.upgrade() else { return };
                     w.set_discovering(false);
-
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
                         if let Some(arr) = v["peers"].as_array() {
                             let items: Vec<LanPeer> = arr
                                 .iter()
                                 .map(|p| LanPeer {
-                                    id: p["id"].as_str().unwrap_or("").into(),
-                                    ip: p["ip"].as_str().unwrap_or("").into(),
+                                    id:       p["id"].as_str().unwrap_or("").into(),
+                                    ip:       p["ip"].as_str().unwrap_or("").into(),
                                     hostname: p["hostname"].as_str().unwrap_or("").into(),
                                     username: p["username"].as_str().unwrap_or("").into(),
                                     platform: p["platform"].as_str().unwrap_or("").into(),
-                                    online: p["online"].as_bool().unwrap_or(false),
+                                    online:   p["online"].as_bool().unwrap_or(false),
                                 })
                                 .collect();
                             w.set_lan_peers(ModelRc::new(VecModel::from(items)));
@@ -491,11 +683,16 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
         let win = w.as_weak();
         w.on_close_conn(move |uuid| {
             let cmd = format!(r#"{{"cmd":"close_conn","uuid":"{}"}}"#, uuid);
-            blocking_ipc(ipc_port, &cmd);
-            // 刷新列表
-            if let Some(w) = win.upgrade() {
-                poll_and_update(&w, ipc_port, None);
-            }
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                ipc_call(ipc_port, &cmd);
+                let snap = collect_poll_data(ipc_port, 1);
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = win2.upgrade() {
+                        apply_poll_snapshot(&w, snap);
+                    }
+                });
+            });
         });
     }
 
@@ -509,20 +706,23 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                 peer_id
             );
             w.set_connecting(true);
-            w.set_page(0); // 跳到首页显示结果
-
-            let resp = blocking_ipc(ipc_port, &cmd);
-            let win2 = win.upgrade().unwrap();
-            win2.set_connecting(false);
-
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-                if let Some(port) = v["local_port"].as_u64() {
-                    win2.set_connect_result(format!("✅ 已连接！本地端口 {}", port).into());
-                } else {
-                    let err = v["error"].as_str().unwrap_or("连接失败");
-                    win2.set_connect_result(format!("❌ {}", err).into());
-                }
-            }
+            w.set_page(0);
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp = ipc_call(ipc_port, &cmd);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_connecting(false);
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                        if let Some(port) = v["local_port"].as_u64() {
+                            w.set_connect_result(format!("✅ 已连接！本地端口 {}", port).into());
+                        } else {
+                            let err = v["error"].as_str().unwrap_or("连接失败");
+                            w.set_connect_result(format!("❌ {}", err).into());
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -533,33 +733,33 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             let Some(w) = win.upgrade() else { return };
             let username = w.get_login_user().to_string();
             let password = w.get_login_pass().to_string();
-            if username.is_empty() || password.is_empty() {
-                return;
-            }
-
+            if username.is_empty() || password.is_empty() { return; }
             w.set_account_busy(true);
             w.set_account_status("".into());
-
             let cmd = format!(
                 r#"{{"cmd":"auth_login","username":"{}","password":"{}"}}"#,
                 escape_json(&username),
                 escape_json(&password)
             );
-            let win2 = win.upgrade().unwrap();
-            let resp = blocking_ipc(ipc_port, &cmd);
-            win2.set_account_busy(false);
-
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-                if let Some(a) = v.get("auth") {
-                    win2.set_logged_in(a["logged_in"].as_bool().unwrap_or(false));
-                    win2.set_username(a["username"].as_str().unwrap_or("").into());
-                    win2.set_role(a["role"].as_str().unwrap_or("").into());
-                    win2.set_account_status("✅ 登录成功".into());
-                    win2.set_login_pass("".into());
-                } else if let Some(e) = v["error"].as_str() {
-                    win2.set_account_status(format!("❌ {}", e).into());
-                }
-            }
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp = ipc_call(ipc_port, &cmd);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_account_busy(false);
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                        if let Some(a) = v.get("auth") {
+                            w.set_logged_in(a["logged_in"].as_bool().unwrap_or(false));
+                            w.set_username(a["username"].as_str().unwrap_or("").into());
+                            w.set_role(a["role"].as_str().unwrap_or("").into());
+                            w.set_account_status("✅ 登录成功".into());
+                            w.set_login_pass("".into());
+                        } else if let Some(e) = v["error"].as_str() {
+                            w.set_account_status(format!("❌ {}", e).into());
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -567,13 +767,18 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     {
         let win = w.as_weak();
         w.on_do_logout(move || {
-            blocking_ipc(ipc_port, r#"{"cmd":"auth_logout"}"#);
-            if let Some(w) = win.upgrade() {
-                w.set_logged_in(false);
-                w.set_username("".into());
-                w.set_role("".into());
-                w.set_account_status("✅ 已退出登录".into());
-            }
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                ipc_call(ipc_port, r#"{"cmd":"auth_logout"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = win2.upgrade() {
+                        w.set_logged_in(false);
+                        w.set_username("".into());
+                        w.set_role("".into());
+                        w.set_account_status("✅ 已退出登录".into());
+                    }
+                });
+            });
         });
     }
 
@@ -586,30 +791,32 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             let password = w.get_login_pass().to_string();
             let email    = w.get_reg_email().to_string();
             let dname    = w.get_reg_device_name().to_string();
-
             if username.is_empty() || password.is_empty() || email.is_empty() { return; }
             w.set_account_busy(true);
-
             let cmd = format!(
                 r#"{{"cmd":"auth_register","username":"{}","email":"{}","password":"{}","device_name":"{}"}}"#,
                 escape_json(&username), escape_json(&email),
                 escape_json(&password), escape_json(&dname)
             );
-            let win2 = win.upgrade().unwrap();
-            let resp  = blocking_ipc(ipc_port, &cmd);
-            win2.set_account_busy(false);
-
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-                if let Some(a) = v.get("auth") {
-                    win2.set_logged_in(a["logged_in"].as_bool().unwrap_or(false));
-                    win2.set_username(a["username"].as_str().unwrap_or("").into());
-                    win2.set_role(a["role"].as_str().unwrap_or("").into());
-                    win2.set_account_status("✅ 注册并登录成功".into());
-                    win2.set_show_register(false);
-                } else if let Some(e) = v["error"].as_str() {
-                    win2.set_account_status(format!("❌ {}", e).into());
-                }
-            }
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp = ipc_call(ipc_port, &cmd);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_account_busy(false);
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                        if let Some(a) = v.get("auth") {
+                            w.set_logged_in(a["logged_in"].as_bool().unwrap_or(false));
+                            w.set_username(a["username"].as_str().unwrap_or("").into());
+                            w.set_role(a["role"].as_str().unwrap_or("").into());
+                            w.set_account_status("✅ 注册并登录成功".into());
+                            w.set_show_register(false);
+                        } else if let Some(e) = v["error"].as_str() {
+                            w.set_account_status(format!("❌ {}", e).into());
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -620,31 +827,31 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             let Some(w) = win.upgrade() else { return };
             let old = w.get_old_pass().to_string();
             let new = w.get_new_pass().to_string();
-            if old.is_empty() || new.is_empty() {
-                return;
-            }
-
+            if old.is_empty() || new.is_empty() { return; }
             w.set_account_busy(true);
             let cmd = format!(
                 r#"{{"cmd":"auth_change_password","old_password":"{}","new_password":"{}"}}"#,
-                escape_json(&old),
-                escape_json(&new)
+                escape_json(&old), escape_json(&new)
             );
-            let win2 = win.upgrade().unwrap();
-            let resp = blocking_ipc(ipc_port, &cmd);
-            win2.set_account_busy(false);
-
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-                if v["ok"].as_bool().unwrap_or(false) {
-                    win2.set_account_status("✅ 密码已修改，请重新登录".into());
-                    win2.set_logged_in(false);
-                    win2.set_old_pass("".into());
-                    win2.set_new_pass("".into());
-                } else {
-                    let e = v["error"].as_str().unwrap_or("修改失败");
-                    win2.set_account_status(format!("❌ {}", e).into());
-                }
-            }
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp = ipc_call(ipc_port, &cmd);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_account_busy(false);
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                        if v["ok"].as_bool().unwrap_or(false) {
+                            w.set_account_status("✅ 密码已修改，请重新登录".into());
+                            w.set_logged_in(false);
+                            w.set_old_pass("".into());
+                            w.set_new_pass("".into());
+                        } else {
+                            let e = v["error"].as_str().unwrap_or("修改失败");
+                            w.set_account_status(format!("❌ {}", e).into());
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -652,15 +859,27 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     {
         let win = w.as_weak();
         w.on_do_remove_device(move |device_id| {
-            let cmd = format!(
-                r#"{{"cmd":"auth_remove_device","device_id":"{}"}}"#,
-                device_id
-            );
-            blocking_ipc(ipc_port, &cmd);
-            // 刷新设备列表
-            if let Some(w) = win.upgrade() {
-                refresh_devices(&w, ipc_port);
-            }
+            let cmd = format!(r#"{{"cmd":"auth_remove_device","device_id":"{}"}}"#, device_id);
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                ipc_call(ipc_port, &cmd);
+                let dev_raw = ipc_call(ipc_port, r#"{"cmd":"auth_list_devices"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    if let Ok(dv) = serde_json::from_str::<serde_json::Value>(&dev_raw) {
+                        if let Some(arr) = dv["devices"].as_array() {
+                            let items: Vec<BoundDevice> = arr.iter().map(|d| BoundDevice {
+                                id:          d["id"].as_i64().unwrap_or(0) as i32,
+                                device_id:   d["device_id"].as_str().unwrap_or("").into(),
+                                device_name: d["device_name"].as_str().unwrap_or("").into(),
+                                is_active:   d["is_active"].as_bool().unwrap_or(false),
+                                created_at:  d["created_at"].as_str().unwrap_or("").into(),
+                            }).collect();
+                            w.set_devices(ModelRc::new(VecModel::from(items)));
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -669,25 +888,29 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
         let win = w.as_weak();
         w.on_do_save_settings(move || {
             let Some(w) = win.upgrade() else { return };
-            let server = w.get_cfg_server().to_string();
-            let relay = w.get_cfg_relay().to_string();
-            let api_url = w.get_cfg_api_url().to_string();
+            let server      = w.get_cfg_server().to_string();
+            let relay       = w.get_cfg_relay().to_string();
+            let api_url     = w.get_cfg_api_url().to_string();
             let ipc_port_str = w.get_cfg_ipc_port().to_string();
-
             ClientConfig::update(|c| {
                 c.rendezvous_servers = server.clone();
-                c.relay_server = relay.clone();
-                c.api_url = api_url.clone();
+                c.relay_server       = relay.clone();
+                c.api_url            = api_url.clone();
                 if let Ok(p) = ipc_port_str.parse::<u16>() {
                     c.ipc_port = p;
                 }
             });
-
             w.set_settings_status("✅ 配置已保存".into());
             log::info!("[gui] 设置已保存，触发中介重启");
-
-            // 通知中介重连
-            blocking_ipc(ipc_port, r#"{"cmd":"restart_mediator"}"#);
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                ipc_call(ipc_port, r#"{"cmd":"restart_mediator"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = win2.upgrade() {
+                        w.set_settings_status("✅ 配置已保存，中介已重启".into());
+                    }
+                });
+            });
         });
     }
 
@@ -695,10 +918,15 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     {
         let win = w.as_weak();
         w.on_do_restart_mediator(move || {
-            blocking_ipc(ipc_port, r#"{"cmd":"restart_mediator"}"#);
-            if let Some(w) = win.upgrade() {
-                w.set_settings_status("✅ 中介已重启".into());
-            }
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                ipc_call(ipc_port, r#"{"cmd":"restart_mediator"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(w) = win2.upgrade() {
+                        w.set_settings_status("✅ 中介已重启".into());
+                    }
+                });
+            });
         });
     }
 
@@ -760,22 +988,15 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
         w.on_save_proxy_settings(move || {
             let Some(w) = win.upgrade() else { return };
             let exit_peer = w.get_socks5_exit_peer().to_string();
-            let port_str = w.get_socks5_port_str().to_string();
+            let port_str  = w.get_socks5_port_str().to_string();
             let port: u16 = port_str.parse().unwrap_or(1080);
-
             ClientConfig::update(|c| {
                 c.socks5_exit_peer = exit_peer.clone();
-                c.socks5_port = port;
+                c.socks5_port      = port;
             });
-
             w.set_settings_status("✅ 代理设置已保存（重启后生效）".into());
-            log::info!("[gui] 代理设置已保存: exit_peer={} port={}", exit_peer, port);
-
-            let cmd = format!(
-                r#"{{"cmd":"proxy_save","port":{},"exit_peer":"{}"}}"#,
-                port, exit_peer
-            );
-            blocking_ipc(ipc_port, &cmd);
+            let cmd = format!(r#"{{"cmd":"proxy_save","port":{},"exit_peer":"{}"}}"#, port, exit_peer);
+            std::thread::spawn(move || { ipc_call(ipc_port, &cmd); });
         });
     }
 
@@ -783,9 +1004,28 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     {
         let win = w.as_weak();
         w.on_do_refresh_rules(move || {
-            if let Some(w) = win.upgrade() {
-                refresh_rules(&w, ipc_port);
-            }
+            let Some(w) = win.upgrade() else { return };
+            w.set_tunnel_rules_loading(true);
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp = ipc_call(ipc_port, r#"{"cmd":"list_rules"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_tunnel_rules_loading(false);
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                        if let Some(arr) = v["rules"].as_array() {
+                            let items: Vec<ForwardRule> = arr.iter().map(|r| ForwardRule {
+                                rule_id:        r["rule_id"].as_str().unwrap_or("").into(),
+                                name:           r["name"].as_str().unwrap_or("").into(),
+                                target_host:    r["target_host"].as_str().unwrap_or("127.0.0.1").into(),
+                                target_port:    r["target_port"].as_u64().unwrap_or(0).to_string().into(),
+                                peer_id_filter: r["peer_id_filter"].as_str().unwrap_or("").into(),
+                            }).collect();
+                            w.set_tunnel_rules(ModelRc::new(VecModel::from(items)));
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -798,7 +1038,6 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             let port_str    = w.get_tunnel_new_port().to_string();
             let target_host = w.get_tunnel_new_host().to_string();
             let peer_filter = w.get_tunnel_new_filter().to_string();
-
             let target_port: u16 = match port_str.parse() {
                 Ok(p) => p,
                 Err(_) => {
@@ -807,7 +1046,6 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                     return;
                 }
             };
-
             let cmd = serde_json::json!({
                 "cmd": "add_rule",
                 "rule_name": name,
@@ -815,25 +1053,40 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                 "target_host": target_host,
                 "peer_id_filter": peer_filter,
             }).to_string();
-
-            let resp = blocking_ipc(ipc_port, &cmd);
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-                if v["ok"].as_bool().unwrap_or(false) {
-                    w.set_tunnel_status_msg(
-                        format!("✅ 规则「{}」已添加", w.get_tunnel_new_name()).into()
-                    );
-                    w.set_tunnel_status_ok(true);
-                    // 清空输入
-                    w.set_tunnel_new_name("".into());
-                    w.set_tunnel_new_port("".into());
-                    w.set_tunnel_new_filter("".into());
-                    refresh_rules(&w, ipc_port);
-                } else {
-                    let err = v["error"].as_str().unwrap_or("添加失败");
-                    w.set_tunnel_status_msg(format!("❌ {}", err).into());
-                    w.set_tunnel_status_ok(false);
-                }
-            }
+            let name_display = w.get_tunnel_new_name().to_string();
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp = ipc_call(ipc_port, &cmd);
+                let rules_resp = ipc_call(ipc_port, r#"{"cmd":"list_rules"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                        if v["ok"].as_bool().unwrap_or(false) {
+                            w.set_tunnel_status_msg(format!("✅ 规则「{}」已添加", name_display).into());
+                            w.set_tunnel_status_ok(true);
+                            w.set_tunnel_new_name("".into());
+                            w.set_tunnel_new_port("".into());
+                            w.set_tunnel_new_filter("".into());
+                        } else {
+                            let err = v["error"].as_str().unwrap_or("添加失败");
+                            w.set_tunnel_status_msg(format!("❌ {}", err).into());
+                            w.set_tunnel_status_ok(false);
+                        }
+                    }
+                    if let Ok(rv) = serde_json::from_str::<serde_json::Value>(&rules_resp) {
+                        if let Some(arr) = rv["rules"].as_array() {
+                            let items: Vec<ForwardRule> = arr.iter().map(|r| ForwardRule {
+                                rule_id:        r["rule_id"].as_str().unwrap_or("").into(),
+                                name:           r["name"].as_str().unwrap_or("").into(),
+                                target_host:    r["target_host"].as_str().unwrap_or("127.0.0.1").into(),
+                                target_port:    r["target_port"].as_u64().unwrap_or(0).to_string().into(),
+                                peer_id_filter: r["peer_id_filter"].as_str().unwrap_or("").into(),
+                            }).collect();
+                            w.set_tunnel_rules(ModelRc::new(VecModel::from(items)));
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -841,16 +1094,29 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     {
         let win = w.as_weak();
         w.on_do_remove_rule(move |rule_id| {
-            let cmd = serde_json::json!({
-                "cmd": "remove_rule",
-                "rule_id": rule_id.to_string(),
-            }).to_string();
-            blocking_ipc(ipc_port, &cmd);
-            if let Some(w) = win.upgrade() {
-                refresh_rules(&w, ipc_port);
-                w.set_tunnel_status_msg("规则已删除".into());
-                w.set_tunnel_status_ok(true);
-            }
+            let cmd = serde_json::json!({ "cmd": "remove_rule", "rule_id": rule_id.to_string() }).to_string();
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                ipc_call(ipc_port, &cmd);
+                let rules_resp = ipc_call(ipc_port, r#"{"cmd":"list_rules"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_tunnel_status_msg("规则已删除".into());
+                    w.set_tunnel_status_ok(true);
+                    if let Ok(rv) = serde_json::from_str::<serde_json::Value>(&rules_resp) {
+                        if let Some(arr) = rv["rules"].as_array() {
+                            let items: Vec<ForwardRule> = arr.iter().map(|r| ForwardRule {
+                                rule_id:        r["rule_id"].as_str().unwrap_or("").into(),
+                                name:           r["name"].as_str().unwrap_or("").into(),
+                                target_host:    r["target_host"].as_str().unwrap_or("127.0.0.1").into(),
+                                target_port:    r["target_port"].as_u64().unwrap_or(0).to_string().into(),
+                                peer_id_filter: r["peer_id_filter"].as_str().unwrap_or("").into(),
+                            }).collect();
+                            w.set_tunnel_rules(ModelRc::new(VecModel::from(items)));
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -870,9 +1136,36 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     {
         let win = w.as_weak();
         w.on_do_refresh_plans(move || {
-            if let Some(w) = win.upgrade() {
-                refresh_plans(&w, ipc_port);
-            }
+            let Some(w) = win.upgrade() else { return };
+            w.set_pay_loading(true);
+            let win2 = win.clone();
+            std::thread::spawn(move || {
+                let resp_plans = ipc_call(ipc_port, r#"{"cmd":"get_plans"}"#);
+                let resp_my    = ipc_call(ipc_port, r#"{"cmd":"auth_subscription"}"#);
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(w) = win2.upgrade() else { return };
+                    w.set_pay_loading(false);
+                    let current_plan_name = serde_json::from_str::<serde_json::Value>(&resp_my)
+                        .ok()
+                        .and_then(|v| v["subscription"]["plan_name"].as_str().map(|s| s.to_owned()))
+                        .unwrap_or_default();
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp_plans) {
+                        if let Some(arr) = v["plans"].as_array() {
+                            let items: Vec<PlanItem> = arr.iter().map(|p| PlanItem {
+                                id:               p["id"].as_i64().unwrap_or(0) as i32,
+                                name:             p["name"].as_str().unwrap_or("").into(),
+                                display_name:     p["display_name"].as_str().unwrap_or("").into(),
+                                price_monthly:    p["price_monthly"].as_f64().unwrap_or(0.0) as f32,
+                                device_limit:     p["device_limit"].as_i64().unwrap_or(0) as i32,
+                                speed_limit_kbps: p["speed_limit_kbps"].as_i64().unwrap_or(0) as i32,
+                                description:      p["description"].as_str().unwrap_or("").into(),
+                                is_current:       p["name"].as_str().unwrap_or("") == current_plan_name,
+                            }).collect();
+                            w.set_pay_plans(ModelRc::new(VecModel::from(items)));
+                        }
+                    }
+                });
+            });
         });
     }
 
@@ -884,30 +1177,25 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
             w.set_pay_status_msg("正在创建支付宝订单…".into());
             w.set_pay_status_ok(false);
             w.set_pay_qr_visible(false);
-
             let win2 = w.as_weak();
             std::thread::spawn(move || {
                 let cmd = format!(r#"{{"cmd":"payment_create","plan_id":{},"method":"alipay"}}"#, plan_id);
-                let resp = blocking_ipc(ipc_port, &cmd);
-
+                let resp = ipc_call(ipc_port, &cmd);
                 let _ = slint::invoke_from_event_loop(move || {
                     let Some(w) = win2.upgrade() else { return };
                     match serde_json::from_str::<serde_json::Value>(&resp) {
                         Ok(v) => {
                             let d = v.get("data").unwrap_or(&v);
                             if let Some(qr) = d["qr_content"].as_str() {
-                                // 根据计划名和价格更新显示
                                 if let Some(name) = d["plan_name"].as_str() {
                                     w.set_pay_selected_plan_name(name.into());
                                 }
-                                // 生成二维码图片
                                 match make_qr_image(qr) {
                                     Ok(img) => {
                                         w.set_pay_qr_image(img);
                                         w.set_pay_qr_visible(true);
                                         w.set_pay_status_msg("请使用支付宝扫码完成支付".into());
                                         w.set_pay_status_ok(true);
-                                        // 启动轮询（存储 order_no 用于查询）
                                         if let Some(order_no) = d["order_no"].as_str() {
                                             start_payment_poll(win2.clone(), ipc_port, order_no.to_string());
                                         }
@@ -933,26 +1221,23 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
         });
     }
 
-    // ── Stripe 支付（打开浏览器）────────────────────────────────────────────
+    // ── Stripe 支付 ──────────────────────────────────────────────────────────
     {
         let win = w.as_weak();
         w.on_do_pay_stripe(move |plan_id| {
             let Some(w) = win.upgrade() else { return };
             w.set_pay_status_msg("正在创建 Stripe 会话…".into());
             w.set_pay_status_ok(false);
-
             let win2 = w.as_weak();
             std::thread::spawn(move || {
                 let cmd = format!(r#"{{"cmd":"payment_create","plan_id":{},"method":"stripe"}}"#, plan_id);
-                let resp = blocking_ipc(ipc_port, &cmd);
-
+                let resp = ipc_call(ipc_port, &cmd);
                 let _ = slint::invoke_from_event_loop(move || {
                     let Some(w) = win2.upgrade() else { return };
                     match serde_json::from_str::<serde_json::Value>(&resp) {
                         Ok(v) => {
                             let d = v.get("data").unwrap_or(&v);
                             if let Some(url) = d["checkout_url"].as_str() {
-                                // 打开系统浏览器
                                 if let Err(e) = open::that(url) {
                                     w.set_pay_status_msg(format!("❌ 无法打开浏览器: {}", e).into());
                                     w.set_pay_status_ok(false);
@@ -991,7 +1276,6 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     }
 
     // ── 手动检查更新 ─────────────────────────────────────────────────────────
-    // 在独立线程中执行（不依赖后台自动检查线程），确保 UI 能立即响应
     {
         let win = w.as_weak();
         w.on_do_check_update(move || {
@@ -1003,15 +1287,14 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                 }
                 return;
             }
-            let win2 = win.clone();
-            if let Some(w) = win2.upgrade() {
+            if let Some(w) = win.upgrade() {
                 w.set_update_checking(true);
                 w.set_update_msg("".into());
                 w.set_update_available(false);
             }
+            let win2 = win.clone();
             std::thread::spawn(move || {
                 let result = crate::updater::check_update(&api_url);
-                // 将完整 UpdateInfo 存入全局（供 do_apply_update 使用，含 sha256）
                 if let Ok(Some(ref info)) = result {
                     if let Ok(mut stored) = crate::updater::SOFTWARE_UPDATE_INFO.lock() {
                         *stored = Some(info.clone());
@@ -1046,12 +1329,9 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
     }
 
     // ── 下载并安装更新 ───────────────────────────────────────────────────────
-    // 使用 SOFTWARE_UPDATE_URL 中已存储的下载地址（check 阶段已验证）
-    // 参考 RustDesk：HEAD 请求检查已下载文件大小，避免重复下载
     {
         let win = w.as_weak();
         w.on_do_apply_update(move || {
-            // 从全局取出检查阶段存储的完整 UpdateInfo（含 sha256）
             let info = match crate::updater::SOFTWARE_UPDATE_INFO.lock().ok().and_then(|g| g.clone()) {
                 Some(i) => i,
                 None => {
@@ -1062,15 +1342,13 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                     return;
                 }
             };
-
-            let win2 = win.clone();
-            if let Some(w) = win2.upgrade() {
+            if let Some(w) = win.upgrade() {
                 w.set_update_downloading(true);
                 w.set_update_progress(0.0);
                 w.set_update_msg("正在下载…".into());
                 w.set_update_msg_ok(true);
             }
-
+            let win2 = win.clone();
             std::thread::spawn(move || {
                 let win3 = win2.clone();
                 let result = crate::updater::download_and_apply(&info, move |p| {
@@ -1081,7 +1359,6 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                         }
                     });
                 });
-                // download_and_apply 成功时进程已退出，仅失败才到达此处
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(w) = win2.upgrade() {
                         w.set_update_downloading(false);
@@ -1104,60 +1381,21 @@ fn handle_tray_action(w: &AppWindow, action: TrayAction) {
     match action {
         TrayAction::ToggleWindow => {
             let visible = w.window().is_visible();
-            if visible {
-                w.window().hide().ok();
-            } else {
-                w.window().show().ok();
-                w.window().request_redraw();
-            }
+            if visible { w.window().hide().ok(); }
+            else { w.window().show().ok(); w.window().request_redraw(); }
         }
-        TrayAction::GoHome => {
-            w.window().show().ok();
-            w.set_page(0);
-        }
-        TrayAction::GoConnect => {
-            w.window().show().ok();
-            w.set_page(0);
-        }
-        TrayAction::GoAccount => {
-            w.window().show().ok();
-            w.set_page(3);
-        }
-        TrayAction::Quit => slint::quit_event_loop().ok().unwrap_or(()),
+        TrayAction::GoHome    => { w.window().show().ok(); w.set_page(0); }
+        TrayAction::GoConnect => { w.window().show().ok(); w.set_page(0); }
+        TrayAction::GoAccount => { w.window().show().ok(); w.set_page(3); }
+        TrayAction::Quit      => slint::quit_event_loop().ok().unwrap_or(()),
     }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 设备列表刷新
+// IPC 调用（在后台线程使用）
 // ──────────────────────────────────────────────────────────────────────────────
 
-fn refresh_devices(w: &AppWindow, ipc_port: u16) {
-    w.set_devices_loading(true);
-    let resp = blocking_ipc(ipc_port, r#"{"cmd":"auth_list_devices"}"#);
-    w.set_devices_loading(false);
-
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-        if let Some(arr) = v["devices"].as_array() {
-            let items: Vec<BoundDevice> = arr
-                .iter()
-                .map(|d| BoundDevice {
-                    id: d["id"].as_i64().unwrap_or(0) as i32,
-                    device_id: d["device_id"].as_str().unwrap_or("").into(),
-                    device_name: d["device_name"].as_str().unwrap_or("").into(),
-                    is_active: d["is_active"].as_bool().unwrap_or(false),
-                    created_at: d["created_at"].as_str().unwrap_or("").into(),
-                })
-                .collect();
-            w.set_devices(ModelRc::new(VecModel::from(items)));
-        }
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// IPC 同步调用（在 Slint 主线程安全使用，因为 IPC 极快）
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn blocking_ipc(ipc_port: u16, cmd: &str) -> String {
+fn ipc_call(ipc_port: u16, cmd: &str) -> String {
     use std::io::{BufRead, BufReader, Write};
     use std::net::TcpStream;
 
@@ -1184,6 +1422,53 @@ fn blocking_ipc(ipc_port: u16, cmd: &str) -> String {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// 支付状态轮询
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn start_payment_poll(win: slint::Weak<AppWindow>, ipc_port: u16, order_no: String) {
+    std::thread::spawn(move || {
+        for _ in 0..40 {
+            std::thread::sleep(Duration::from_secs(3));
+            let cmd = format!(r#"{{"cmd":"payment_status","order_no":"{}"}}"#, order_no);
+            let resp = ipc_call(ipc_port, &cmd);
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
+                if v["status"].as_str().unwrap_or("") == "paid" {
+                    let resp_plans = ipc_call(ipc_port, r#"{"cmd":"get_plans"}"#);
+                    let resp_my    = ipc_call(ipc_port, r#"{"cmd":"auth_subscription"}"#);
+                    let win2 = win.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        let Some(w) = win2.upgrade() else { return };
+                        w.set_pay_qr_visible(false);
+                        w.set_pay_status_msg("✅ 支付成功！订阅已激活".into());
+                        w.set_pay_status_ok(true);
+                        let current_plan_name = serde_json::from_str::<serde_json::Value>(&resp_my)
+                            .ok()
+                            .and_then(|v| v["subscription"]["plan_name"].as_str().map(|s| s.to_owned()))
+                            .unwrap_or_default();
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp_plans) {
+                            if let Some(arr) = v["plans"].as_array() {
+                                let items: Vec<PlanItem> = arr.iter().map(|p| PlanItem {
+                                    id:               p["id"].as_i64().unwrap_or(0) as i32,
+                                    name:             p["name"].as_str().unwrap_or("").into(),
+                                    display_name:     p["display_name"].as_str().unwrap_or("").into(),
+                                    price_monthly:    p["price_monthly"].as_f64().unwrap_or(0.0) as f32,
+                                    device_limit:     p["device_limit"].as_i64().unwrap_or(0) as i32,
+                                    speed_limit_kbps: p["speed_limit_kbps"].as_i64().unwrap_or(0) as i32,
+                                    description:      p["description"].as_str().unwrap_or("").into(),
+                                    is_current:       p["name"].as_str().unwrap_or("") == current_plan_name,
+                                }).collect();
+                                w.set_pay_plans(ModelRc::new(VecModel::from(items)));
+                            }
+                        }
+                    });
+                    return;
+                }
+            }
+        }
+    });
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // 格式化工具函数
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -1199,143 +1484,30 @@ fn nat_type_name(t: i64) -> &'static str {
 }
 
 fn format_bytes(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{} B", bytes)
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.2} MB", bytes as f64 / 1024.0 / 1024.0)
-    }
+    if bytes < 1024 { format!("{} B", bytes) }
+    else if bytes < 1024 * 1024 { format!("{:.1} KB", bytes as f64 / 1024.0) }
+    else { format!("{:.2} MB", bytes as f64 / 1024.0 / 1024.0) }
 }
 
 fn format_ts(ts: u64) -> String {
-    if ts == 0 {
-        return "—".to_owned();
-    }
-    // 简单格式：当前时间减去 ts 的差值
+    if ts == 0 { return "—".to_owned(); }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
     let diff = now.saturating_sub(ts);
-    if diff < 60 {
-        format!("{}秒前", diff)
-    } else if diff < 3600 {
-        format!("{}分钟前", diff / 60)
-    } else {
-        format!("{}小时前", diff / 3600)
-    }
+    if diff < 60 { format!("{}秒前", diff) }
+    else if diff < 3600 { format!("{}分钟前", diff / 60) }
+    else { format!("{}小时前", diff / 3600) }
 }
 
 fn format_duration(secs: i64) -> String {
-    if secs <= 0 {
-        return "已过期".to_owned();
-    }
-    if secs < 60 {
-        format!("{}秒", secs)
-    } else if secs < 3600 {
-        format!("{}分钟", secs / 60)
-    } else {
-        format!("{:.1}小时", secs as f64 / 3600.0)
-    }
+    if secs <= 0 { return "已过期".to_owned(); }
+    if secs < 60 { format!("{}秒", secs) }
+    else if secs < 3600 { format!("{}分钟", secs / 60) }
+    else { format!("{:.1}小时", secs as f64 / 3600.0) }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// 订阅套餐刷新
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn refresh_plans(w: &AppWindow, ipc_port: u16) {
-    w.set_pay_loading(true);
-    let resp_plans = blocking_ipc(ipc_port, r#"{"cmd":"get_plans"}"#);
-    let resp_my    = blocking_ipc(ipc_port, r#"{"cmd":"auth_subscription"}"#);
-    w.set_pay_loading(false);
-
-    let current_plan_name = serde_json::from_str::<serde_json::Value>(&resp_my)
-        .ok()
-        .and_then(|v| v["subscription"]["plan_name"].as_str().map(|s| s.to_owned()))
-        .unwrap_or_default();
-
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp_plans) {
-        if let Some(arr) = v["plans"].as_array() {
-            let items: Vec<PlanItem> = arr
-                .iter()
-                .map(|p| PlanItem {
-                    id: p["id"].as_i64().unwrap_or(0) as i32,
-                    name: p["name"].as_str().unwrap_or("").into(),
-                    display_name: p["display_name"].as_str().unwrap_or("").into(),
-                    price_monthly: p["price_monthly"].as_f64().unwrap_or(0.0) as f32,
-                    device_limit: p["device_limit"].as_i64().unwrap_or(0) as i32,
-                    speed_limit_kbps: p["speed_limit_kbps"].as_i64().unwrap_or(0) as i32,
-                    description: p["description"].as_str().unwrap_or("").into(),
-                    is_current: p["name"].as_str().unwrap_or("") == current_plan_name,
-                })
-                .collect();
-            w.set_pay_plans(ModelRc::new(VecModel::from(items)));
-        }
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// 二维码图片生成（qrcode + image → slint::Image）
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn make_qr_image(content: &str) -> Result<slint::Image, String> {
-    use qrcode::QrCode;
-    use image::{DynamicImage, Luma};
-
-    let code = QrCode::new(content.as_bytes())
-        .map_err(|e| format!("QR 编码失败: {}", e))?;
-
-    // 渲染为灰度图（6px 模块大小，安静区 4）
-    let luma: image::ImageBuffer<Luma<u8>, Vec<u8>> = code
-        .render::<Luma<u8>>()
-        .quiet_zone(true)
-        .module_dimensions(6, 6)
-        .build();
-
-    let rgba = DynamicImage::ImageLuma8(luma).to_rgba8();
-    let width  = rgba.width();
-    let height = rgba.height();
-    let raw    = rgba.into_raw();
-
-    let pixel_buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-        bytemuck::cast_slice(&raw),
-        width,
-        height,
-    );
-    Ok(slint::Image::from_rgba8(pixel_buf))
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// 支付状态轮询（后台线程每 3 秒查一次 IPC，支付成功后刷新套餐）
-// ──────────────────────────────────────────────────────────────────────────────
-
-fn start_payment_poll(win: slint::Weak<AppWindow>, ipc_port: u16, order_no: String) {
-    std::thread::spawn(move || {
-        for _ in 0..40 { // 最多轮询 2 分钟
-            std::thread::sleep(Duration::from_secs(3));
-            let cmd = format!(r#"{{"cmd":"payment_status","order_no":"{}"}}"#, order_no);
-            let resp = blocking_ipc(ipc_port, &cmd);
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&resp) {
-                let status = v["status"].as_str().unwrap_or("");
-                if status == "paid" {
-                    let win2 = win.clone();
-                    let _ = slint::invoke_from_event_loop(move || {
-                        if let Some(w) = win2.upgrade() {
-                            w.set_pay_qr_visible(false);
-                            w.set_pay_status_msg("✅ 支付成功！订阅已激活".into());
-                            w.set_pay_status_ok(true);
-                            refresh_plans(&w, ipc_port);
-                        }
-                    });
-                    return;
-                }
-            }
-        }
-    });
-}
-
-/// 转义 JSON 字符串中的特殊字符
 fn escape_json(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
@@ -1343,18 +1515,42 @@ fn escape_json(s: &str) -> String {
         .replace('\r', "\\r")
 }
 
-/// 从编译时嵌入的 ICO 文件解码并返回 slint::Image。
-/// 用于窗口标题栏图标（icon 属性）和侧边栏 Logo 显示。
+// ──────────────────────────────────────────────────────────────────────────────
+// 二维码图片生成
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn make_qr_image(content: &str) -> Result<slint::Image, String> {
+    use image::{DynamicImage, Luma};
+    use qrcode::QrCode;
+
+    let code = QrCode::new(content.as_bytes())
+        .map_err(|e| format!("QR 编码失败: {}", e))?;
+    let luma: image::ImageBuffer<Luma<u8>, Vec<u8>> = code
+        .render::<Luma<u8>>()
+        .quiet_zone(true)
+        .module_dimensions(6, 6)
+        .build();
+    let rgba   = DynamicImage::ImageLuma8(luma).to_rgba8();
+    let width  = rgba.width();
+    let height = rgba.height();
+    let raw    = rgba.into_raw();
+    let pixel_buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
+        bytemuck::cast_slice(&raw), width, height,
+    );
+    Ok(slint::Image::from_rgba8(pixel_buf))
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Logo 加载
+// ──────────────────────────────────────────────────────────────────────────────
+
 fn load_logo_image() -> Option<slint::Image> {
     const ICON_BYTES: &[u8] = include_bytes!("../../icons/logo.ico");
-    let img =
-        image::load_from_memory_with_format(ICON_BYTES, image::ImageFormat::Ico).ok()?;
+    let img = image::load_from_memory_with_format(ICON_BYTES, image::ImageFormat::Ico).ok()?;
     let rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
     let pixel_buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-        bytemuck::cast_slice(rgba.as_raw()),
-        w,
-        h,
+        bytemuck::cast_slice(rgba.as_raw()), w, h,
     );
     Some(slint::Image::from_rgba8(pixel_buf))
 }
