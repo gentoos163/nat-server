@@ -630,7 +630,15 @@ impl RendezvousServer {
         ws: bool, // 是否为WebSocket连接
     ) -> bool {
         let proto = crate::codec::detect(bytes);
-        if let Some(msg_in) = crate::codec::parse(bytes) {
+        let msg_in = match crate::codec::parse(bytes) {
+            Some(m) => m,
+            None => {
+                log::warn!("[tcp] 无法解析来自 {:?} 的消息 ({} 字节, 首字节={:02x?})",
+                    addr, bytes.len(), bytes.first());
+                return false;
+            }
+        };
+        if let Some(msg_in) = Some(msg_in) {
             match msg_in.union {
                 Some(rendezvous_message::Union::PunchHoleRequest(ph)) => {
                     // there maybe several attempt, so sink can be none
@@ -772,7 +780,10 @@ impl RendezvousServer {
                     Self::send_to_sink(sink, msg_out, proto).await;
                     return true;
                 }
-                _ => {}
+                other => {
+                    log::warn!("[tcp] 来自 {:?} 的未处理/空消息类型 (union 为 {:?})", addr,
+                        other.as_ref().map(|_| "非空"));
+                }
             }
         }
         false
@@ -1423,7 +1434,7 @@ impl RendezvousServer {
     }
 
     async fn handle_listener(&self, stream: TcpStream, addr: SocketAddr, key: &str, ws: bool) {
-        log::debug!("Tcp connection from {:?}, ws: {}", addr, ws);
+        log::info!("[tcp] 新连接来自 {:?}, ws: {}", addr, ws);
         let mut rs = self.clone();
         let key = key.to_owned();
         tokio::spawn(async move {
@@ -1470,9 +1481,26 @@ impl RendezvousServer {
         } else {
             let (a, mut b) = Framed::new(stream, BytesCodec::new()).split();
             sink = Some(Sink::TcpStream(a));
-            while let Ok(Some(Ok(bytes))) = timeout(30_000, b.next()).await {
-                if !self.handle_tcp(&bytes, &mut sink, addr, key, ws).await {
-                    break;
+            loop {
+                match timeout(30_000, b.next()).await {
+                    Ok(Some(Ok(bytes))) => {
+                        if !self.handle_tcp(&bytes, &mut sink, addr, key, ws).await {
+                            log::debug!("[tcp] handle_tcp 返回 false，关闭来自 {:?} 的连接", addr);
+                            break;
+                        }
+                    }
+                    Ok(Some(Err(e))) => {
+                        log::warn!("[tcp] 来自 {:?} 的连接解码错误: {}", addr, e);
+                        break;
+                    }
+                    Ok(None) => {
+                        log::debug!("[tcp] 来自 {:?} 的连接被对端关闭", addr);
+                        break;
+                    }
+                    Err(_) => {
+                        log::warn!("[tcp] 来自 {:?} 的连接超时 (30s)", addr);
+                        break;
+                    }
                 }
             }
         }

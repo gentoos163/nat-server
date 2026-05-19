@@ -168,7 +168,7 @@ global Palette {
     out property <color> rule-bg:       ThemeState.dark ? #ffffff07 : #00000007;
     // ── 代码块 ───────────────────────────────────────────────
     out property <color> code-bg:       ThemeState.dark ? #00000088 : #0000001a;
-    out property <color> code-text:     ThemeState.dark ? #86efac   : #166534;
+    out property <color> code-text:     ThemeState.dark ? #86efac : #166534;
     // ── 按钮禁用底色渐变端点 ─────────────────────────────────
     out property <color> btn-dis-from:  ThemeState.dark ? #ffffff0d : #0000000f;
     out property <color> btn-dis-to:    ThemeState.dark ? #ffffff06 : #00000007;
@@ -179,20 +179,20 @@ global Palette {
     out property <color> nav-sel-glow:  ThemeState.dark ? #4c6ef535 : #0071e325;
     out property <color> nav-hover:     ThemeState.dark ? #ffffff0a : #0000000a;
     // ── 主色 + 光晕 ──────────────────────────────────────────
-    out property <color> primary:       ThemeState.dark ? #6b8aff   : #0071e3;
-    out property <color> primary-h:     ThemeState.dark ? #4f6fe8   : #005bbf;
-    out property <color> primary-light: ThemeState.dark ? #8ba3ff   : #1a82ff;
+    out property <color> primary:       ThemeState.dark ? #6b8aff : #0071e3;
+    out property <color> primary-h:     ThemeState.dark ? #4f6fe8 : #005bbf;
+    out property <color> primary-light: ThemeState.dark ? #8ba3ff : #1a82ff;
     out property <color> primary-glow:  ThemeState.dark ? #4c6ef550 : #0071e330;
     // ── 文字 ─────────────────────────────────────────────────
     out property <color> text:          ThemeState.dark ? #c8cad2 : #1d1d1f;
     out property <color> text-dim:      ThemeState.dark ? #6b7280 : #6e6e73;
     out property <color> text-bright:   ThemeState.dark ? #eef0f8 : #000000;
     // ── 状态 + 光晕 ──────────────────────────────────────────
-    out property <color> success:       ThemeState.dark ? #3ecf6e   : #34c759;
+    out property <color> success:       ThemeState.dark ? #3ecf6e : #34c759;
     out property <color> success-glow:  ThemeState.dark ? #3ecf6e50 : #34c75930;
-    out property <color> error:         ThemeState.dark ? #ff6b6b   : #ff3b30;
+    out property <color> error:         ThemeState.dark ? #ff6b6b : #ff3b30;
     out property <color> error-glow:    ThemeState.dark ? #ff6b6b40 : #ff3b3030;
-    out property <color> warning:       ThemeState.dark ? #f5a623   : #ff9500;
+    out property <color> warning:       ThemeState.dark ? #f5a623 : #ff9500;
     // ── 液态玻璃高光 + 背景色球 ─────────────────────────────────
     out property <color> specular:     ThemeState.dark ? #ffffff1e : #ffffff70;
     out property <color> orb-a:        ThemeState.dark ? #4c6ef52a : #0071e316;
@@ -238,22 +238,19 @@ component PBtn inherits Rectangle {
     height: small ? 28px : 36px;
     // 全胶囊圆角
     border-radius: root.height / 2;
-    background: !enabled                ? @linear-gradient(180deg, Palette.btn-dis-from, Palette.btn-dis-to)
-              : danger && ta.has-hover  ? @linear-gradient(180deg, #ff8585, #e03131)
-              : danger                  ? @linear-gradient(180deg, #ff6b6b, #cc2929)
-              : ta.has-hover            ? @linear-gradient(180deg, Palette.primary-light, Palette.primary-h)
-              :                          @linear-gradient(180deg, Palette.primary, Palette.primary-h);
+    background: !enabled ? @linear-gradient(180deg, Palette.btn-dis-from, Palette.btn-dis-to) : danger && ta.has-hover ? @linear-gradient(180deg, #ff8585, #e03131) : danger ? @linear-gradient(180deg, #ff6b6b, #cc2929) : ta.has-hover ? @linear-gradient(180deg, Palette.primary-light, Palette.primary-h) : @linear-gradient(180deg, Palette.primary, Palette.primary-h);
     border-width: 1px;
     border-color: !enabled ? #ffffff0e : ta.has-hover ? Palette.border-hi : #ffffff2a;
     // 悬停时产生蓝/红光晕
-    drop-shadow-blur:    ta.has-hover && enabled ? 20px : 5px;
+    drop-shadow-blur: ta.has-hover && enabled ? 20px : 5px;
     drop-shadow-offset-y: 2px;
-    drop-shadow-color: !enabled ? #00000000
-                     : danger   ? Palette.error-glow
-                     :            Palette.primary-glow;
+    drop-shadow-color: !enabled ? #00000000 : danger ? Palette.error-glow : Palette.primary-glow;
 
-    animate drop-shadow-blur  { duration: 220ms; easing: ease-out; }
-    animate border-color      { duration: 150ms; }
+    animate drop-shadow-blur {
+        duration: 220ms;
+        easing: ease-out;
+    }
+    animate border-color { duration: 150ms; }
 
     Text {
         text: root.text;
@@ -268,7 +265,9 @@ component PBtn inherits Rectangle {
     ta := TouchArea {
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 }
 
@@ -296,7 +295,9 @@ component GhostBtn inherits Rectangle {
 
     ta := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => {
+            root.clicked();
+        }
     }
 }
 
@@ -309,7 +310,7 @@ component Dot inherits Rectangle {
     background: online ? Palette.success : Palette.error;
     drop-shadow-blur: online ? 10px : 4px;
     drop-shadow-color: online ? Palette.success-glow : Palette.error-glow;
-    animate background       { duration: 600ms; }
+    animate background { duration: 600ms; }
     animate drop-shadow-blur { duration: 600ms; }
 }
 
@@ -331,7 +332,7 @@ component Input inherits Rectangle {
     drop-shadow-blur: le.has-focus ? 12px : 0px;
     drop-shadow-color: Palette.primary-glow;
 
-    animate border-color     { duration: 180ms; }
+    animate border-color { duration: 180ms; }
     animate drop-shadow-blur { duration: 180ms; }
 
     le := LineEdit {
@@ -367,16 +368,16 @@ component NavItem inherits TouchArea {
         width: parent.width - 12px;
         height: parent.height - 8px;
         border-radius: 12px;
-        background: root.selected && root.has-hover ? Palette.nav-sel-hi
-                  : root.selected                   ? Palette.nav-sel
-                  : root.has-hover                  ? Palette.nav-hover
-                  :                                   transparent;
+        background: root.selected && root.has-hover ? Palette.nav-sel-hi : root.selected ? Palette.nav-sel : root.has-hover ? Palette.nav-hover : transparent;
         border-width: root.selected ? 1px : 0px;
         border-color: root.selected ? Palette.nav-sel-bdr : transparent;
         drop-shadow-blur: root.selected ? 16px : 0px;
         drop-shadow-color: Palette.nav-sel-glow;
 
-        animate drop-shadow-blur { duration: 250ms; easing: ease-out; }
+        animate drop-shadow-blur {
+            duration: 250ms;
+            easing: ease-out;
+        }
 
         HorizontalLayout {
             padding-left: 12px;
@@ -1016,6 +1017,7 @@ component AccountPage inherits VerticalLayout {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                     }
+
                     Rectangle {
                         width: 80px;
                         height: 22px;
@@ -1031,6 +1033,7 @@ component AccountPage inherits VerticalLayout {
                         }
                     }
                 }
+
                 HorizontalLayout {
                     spacing: 24px;
                     VerticalLayout {
@@ -1040,15 +1043,15 @@ component AccountPage inherits VerticalLayout {
                             font-size: 11px;
                             color: Palette.text-dim;
                         }
+
                         Text {
-                            text: root.sub-device-limit > 0
-                                ? root.sub-device-used + " / " + root.sub-device-limit + " 台"
-                                : root.sub-device-used + " 台（不限）";
+                            text: root.sub-device-limit > 0 ? root.sub-device-used + " / " + root.sub-device-limit + " 台" : root.sub-device-used + " 台（不限）";
                             color: Palette.text-bright;
                             font-size: 14px;
                             font-weight: 600;
                         }
                     }
+
                     VerticalLayout {
                         spacing: 3px;
                         Label {
@@ -1056,6 +1059,7 @@ component AccountPage inherits VerticalLayout {
                             font-size: 11px;
                             color: Palette.text-dim;
                         }
+
                         Text {
                             text: root.sub-expires == "" ? Tr.account_sub_forever : root.sub-expires;
                             color: Palette.text-bright;
@@ -1281,6 +1285,7 @@ component DevicesPage inherits VerticalLayout {
                                 font-size: 15px;
                                 font-weight: 600;
                             }
+
                             Text {
                                 text: item.is-online ? Tr.status_online : Tr.status_offline;
                                 color: item.is-online ? Palette.success : Palette.text-dim;
@@ -1334,13 +1339,13 @@ component SettingsPage inherits VerticalLayout {
     // 更新
     in property <string> update-current-ver;
     in property <string> update-latest-ver;
-    in property <bool>   update-available;
+    in property <bool> update-available;
     in property <string> update-changelog;
     in property <string> update-msg;
-    in property <bool>   update-msg-ok;
-    in property <bool>   update-checking;
-    in property <bool>   update-downloading;
-    in property <float>  update-progress;
+    in property <bool> update-msg-ok;
+    in property <bool> update-checking;
+    in property <bool> update-downloading;
+    in property <float> update-progress;
     callback save();
     callback restart-mediator();
     callback open-config-file();
@@ -1731,13 +1736,13 @@ component CodeLine inherits Rectangle {
 
 component TunnelPage inherits VerticalLayout {
     // ── SOCKS5 状态（复用 AppWindow 已有属性）─────────────────
-    in property <bool>   socks5-enabled;
+    in property <bool> socks5-enabled;
     in property <string> socks5-port-str;
     in property <string> socks5-exit-peer;
 
     // ── 端口转发规则 ──────────────────────────────────────────
     in property <[ForwardRule]> rules;
-    in property <bool>   rules-loading;
+    in property <bool> rules-loading;
 
     // ── 新增规则输入 ──────────────────────────────────────────
     in-out property <string> new-name;
@@ -1747,7 +1752,7 @@ component TunnelPage inherits VerticalLayout {
 
     // ── 状态消息 ──────────────────────────────────────────────
     in property <string> status-msg;
-    in property <bool>   status-ok;
+    in property <bool> status-ok;
 
     callback toggle-socks5();
     callback refresh-rules();
@@ -1770,7 +1775,9 @@ component TunnelPage inherits VerticalLayout {
         }
     }
 
-    Rectangle { height: 16px; }
+    Rectangle {
+        height: 16px;
+    }
 
     // ── SOCKS5 代理卡片 ────────────────────────────────────────
     Card {
@@ -1788,11 +1795,14 @@ component TunnelPage inherits VerticalLayout {
                     horizontal-stretch: 1;
                     vertical-alignment: center;
                 }
+
                 PBtn {
                     text: root.socks5-enabled ? "已启用" : "已禁用";
                     width: 72px;
                     small: true;
-                    clicked => { root.toggle-socks5(); }
+                    clicked => {
+                        root.toggle-socks5();
+                    }
                 }
             }
 
@@ -1802,40 +1812,52 @@ component TunnelPage inherits VerticalLayout {
                 alignment: start;
                 VerticalLayout {
                     alignment: center;
-                    Dot { online: root.socks5-enabled; }
+                    Dot {
+                        online: root.socks5-enabled;
+                    }
                 }
+
                 Text {
-                    text: root.socks5-enabled
-                        ? ("代理地址：127.0.0.1:" + root.socks5-port-str
-                           + "    出口节点：" + (root.socks5-exit-peer == "" ? "（未配置，请在设置页填写）" : root.socks5-exit-peer))
-                        : "代理未启用 —— 点击右上角开关启用，并在设置页配置出口节点";
-                    color: root.socks5-enabled
-                        ? (root.socks5-exit-peer == "" ? Palette.warning : Palette.text)
-                        : Palette.text-dim;
+                    text: root.socks5-enabled ? ("代理地址：127.0.0.1:" + root.socks5-port-str + "    出口节点：" + (root.socks5-exit-peer == "" ? "（未配置，请在设置页填写）" : root.socks5-exit-peer)) : "代理未启用 —— 点击右上角开关启用，并在设置页配置出口节点";
+                    color: root.socks5-enabled ? (root.socks5-exit-peer == "" ? Palette.warning : Palette.text) : Palette.text-dim;
                     font-size: 12px;
                     vertical-alignment: center;
                     wrap: word-wrap;
                 }
             }
 
-            Divider {}
+            Divider { }
 
             // 接入方式参考（第三方应用配置示例）
-            Label { text: "让第三方应用走隧道 —— 配置 SOCKS5 代理示例："; }
+            Label {
+                text: "让第三方应用走隧道 —— 配置 SOCKS5 代理示例：";
+            }
 
-            CodeLine { code: "curl  --socks5-hostname  127.0.0.1:" + root.socks5-port-str + "  <URL>"; }
-            CodeLine { code: "git config --global http.proxy  socks5h://127.0.0.1:" + root.socks5-port-str; }
-            CodeLine { code: "ssh  -o ProxyCommand='nc -X 5 -x 127.0.0.1:" + root.socks5-port-str + " %h %p'  user@host"; }
+            CodeLine {
+                code: "curl  --socks5-hostname  127.0.0.1:" + root.socks5-port-str + "  <URL>";
+            }
+
+            CodeLine {
+                code: "git config --global http.proxy  socks5h://127.0.0.1:" + root.socks5-port-str;
+            }
+
+            CodeLine {
+                code: "ssh  -o ProxyCommand='nc -X 5 -x 127.0.0.1:" + root.socks5-port-str + " %h %p'  user@host";
+            }
 
             HorizontalLayout {
                 spacing: 6px;
                 alignment: start;
-                Label { text: "浏览器 / 全局：系统代理 → SOCKS5 → 127.0.0.1:" + root.socks5-port-str; }
+                Label {
+                    text: "浏览器 / 全局：系统代理 → SOCKS5 → 127.0.0.1:" + root.socks5-port-str;
+                }
             }
         }
     }
 
-    Rectangle { height: 16px; }
+    Rectangle {
+        height: 16px;
+    }
 
     // ── 端口转发规则卡片 ───────────────────────────────────────
     Card {
@@ -1854,14 +1876,19 @@ component TunnelPage inherits VerticalLayout {
                     horizontal-stretch: 1;
                     vertical-alignment: center;
                 }
+
                 GhostBtn {
                     text: root.rules-loading ? Tr.status_loading : Tr.btn_refresh;
                     width: 64px;
-                    clicked => { root.refresh-rules(); }
+                    clicked => {
+                        root.refresh-rules();
+                    }
                 }
             }
 
-            Label { text: "规则让对端可以访问你本机的指定服务（如 SSH、HTTP）。对端连入后流量自动转发到目标地址。"; }
+            Label {
+                text: "规则让对端可以访问你本机的指定服务（如 SSH、HTTP）。对端连入后流量自动转发到目标地址。";
+            }
 
             // 规则列表 —— 空态
             if root.rules.length == 0: Rectangle {
@@ -1942,13 +1969,15 @@ component TunnelPage inherits VerticalLayout {
                             text: Tr.btn_delete;
                             width: 48px;
                             danger: true;
-                            clicked => { root.remove-rule(rule.rule-id); }
+                            clicked => {
+                                root.remove-rule(rule.rule-id);
+                            }
                         }
                     }
                 }
             }
 
-            Divider {}
+            Divider { }
 
             // 添加新规则表单
             Text {
@@ -1966,26 +1995,32 @@ component TunnelPage inherits VerticalLayout {
                     placeholder: "名称（如 SSH）";
                     value <=> root.new-name;
                 }
+
                 Input {
                     width: 88px;
                     placeholder: "目标端口";
                     value <=> root.new-port;
                 }
+
                 Input {
                     width: 130px;
                     placeholder: "目标主机";
                     value <=> root.new-host;
                 }
+
                 Input {
                     width: 120px;
                     placeholder: "限制对端（选填）";
                     value <=> root.new-filter;
                 }
+
                 PBtn {
                     text: Tr.btn_add;
                     width: 60px;
                     enabled: root.new-name != "" && root.new-port != "";
-                    clicked => { root.add-rule(); }
+                    clicked => {
+                        root.add-rule();
+                    }
                 }
             }
 
@@ -1996,7 +2031,9 @@ component TunnelPage inherits VerticalLayout {
         }
     }
 
-    Rectangle { vertical-stretch: 1; }
+    Rectangle {
+        vertical-stretch: 1;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2050,14 +2087,19 @@ component PaymentPage inherits VerticalLayout {
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
+
         GhostBtn {
             text: root.loading ? Tr.status_loading : Tr.btn_refresh;
             width: 72px;
-            clicked => { root.refresh-plans(); }
+            clicked => {
+                root.refresh-plans();
+            }
         }
     }
 
-    Rectangle { height: 16px; }
+    Rectangle {
+        height: 16px;
+    }
 
     // ── 套餐卡片网格 ──────────────────────────────────────────
     if root.plans.length == 0: Rectangle {
@@ -2090,9 +2132,7 @@ component PaymentPage inherits VerticalLayout {
 
                 // 价格
                 Text {
-                    text: plan.price-monthly > 0
-                        ? ("¥" + round(plan.price-monthly) + " /月")
-                        : "免费";
+                    text: plan.price-monthly > 0 ? ("¥" + round(plan.price-monthly) + " /月") : "免费";
                     color: plan.price-monthly > 0 ? Palette.primary : Palette.success;
                     font-size: 22px;
                     font-weight: 800;
@@ -2100,16 +2140,12 @@ component PaymentPage inherits VerticalLayout {
 
                 // 设备数
                 Label {
-                    text: plan.device-limit > 0
-                        ? ("最多 " + plan.device-limit + " 台设备")
-                        : "无限设备";
+                    text: plan.device-limit > 0 ? ("最多 " + plan.device-limit + " 台设备") : "无限设备";
                 }
 
                 // 限速
                 Label {
-                    text: plan.speed-limit-kbps > 0
-                        ? ("限速 " + round(plan.speed-limit-kbps / 1024) + " Mbps")
-                        : "不限速";
+                    text: plan.speed-limit-kbps > 0 ? ("限速 " + round(plan.speed-limit-kbps / 1024) + " Mbps") : "不限速";
                 }
 
                 if plan.description != "": Label {
@@ -2117,7 +2153,9 @@ component PaymentPage inherits VerticalLayout {
                     wrap: word-wrap;
                 }
 
-                Rectangle { vertical-stretch: 1; }
+                Rectangle {
+                    vertical-stretch: 1;
+                }
 
                 // 当前套餐标签 or 支付按钮
                 if plan.is-current: Rectangle {
@@ -2140,19 +2178,25 @@ component PaymentPage inherits VerticalLayout {
                     PBtn {
                         text: "支付宝扫码";
                         height: 32px;
-                        clicked => { root.pay-alipay(plan.id); }
+                        clicked => {
+                            root.pay-alipay(plan.id);
+                        }
                     }
                     // Stripe 按钮
                     GhostBtn {
                         text: "Stripe 信用卡";
-                        clicked => { root.pay-stripe(plan.id); }
+                        clicked => {
+                            root.pay-stripe(plan.id);
+                        }
                     }
                 }
             }
         }
     }
 
-    Rectangle { height: 16px; }
+    Rectangle {
+        height: 16px;
+    }
 
     // ── 支付宝二维码卡片 ──────────────────────────────────────
     if root.qr-visible: Card {
@@ -2170,6 +2214,7 @@ component PaymentPage inherits VerticalLayout {
                     horizontal-stretch: 1;
                     vertical-alignment: center;
                 }
+
                 Text {
                     text: "¥" + round(root.selected-plan-price);
                     color: Palette.primary;
@@ -2179,7 +2224,7 @@ component PaymentPage inherits VerticalLayout {
                 }
             }
 
-            Divider {}
+            Divider { }
 
             HorizontalLayout {
                 alignment: center;
@@ -2191,7 +2236,10 @@ component PaymentPage inherits VerticalLayout {
                 }
             }
 
-            Label { text: "使用支付宝 App 扫描上方二维码完成支付"; horizontal-alignment: center; }
+            Label {
+                text: "使用支付宝 App 扫描上方二维码完成支付";
+                horizontal-alignment: center;
+            }
 
             if root.status-msg != "": StatusMsg {
                 msg: root.status-msg;
@@ -2203,7 +2251,9 @@ component PaymentPage inherits VerticalLayout {
                 GhostBtn {
                     text: "关闭";
                     width: 80px;
-                    clicked => { root.close-qr(); }
+                    clicked => {
+                        root.close-qr();
+                    }
                 }
             }
         }
@@ -2214,7 +2264,9 @@ component PaymentPage inherits VerticalLayout {
         ok: root.status-ok;
     }
 
-    Rectangle { vertical-stretch: 1; }
+    Rectangle {
+        vertical-stretch: 1;
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2249,33 +2301,33 @@ export component AppWindow inherits Window {
     in property <[BoundDevice]> devices;
     // ── 隧道接入 ──────────────────────────────────────────────
     in property <[ForwardRule]> tunnel-rules;
-    in property <bool>   tunnel-rules-loading;
+    in property <bool> tunnel-rules-loading;
     in property <string> tunnel-status-msg;
-    in property <bool>   tunnel-status-ok;
+    in property <bool> tunnel-status-ok;
     in-out property <string> tunnel-new-name;
     in-out property <string> tunnel-new-port;
     in-out property <string> tunnel-new-host: "127.0.0.1";
     in-out property <string> tunnel-new-filter;
     // ── 订阅 / 收款 ──────────────────────────────────────────
     in property <[PlanItem]> pay-plans;
-    in property <bool>   pay-loading;
+    in property <bool> pay-loading;
     in property <string> pay-status-msg;
-    in property <bool>   pay-status-ok;
-    in property <image>  pay-qr-image;
-    in property <bool>   pay-qr-visible;
+    in property <bool> pay-status-ok;
+    in property <image> pay-qr-image;
+    in property <bool> pay-qr-visible;
     in property <string> pay-selected-plan-name;
-    in property <float>  pay-selected-plan-price;
+    in property <float> pay-selected-plan-price;
 
     // ── 更新 ──────────────────────────────────────────────────
     in property <string> update-current-ver: "";
     in property <string> update-latest-ver: "";
-    in property <bool>   update-available;
+    in property <bool> update-available;
     in property <string> update-changelog: "";
     in property <string> update-msg: "";
-    in property <bool>   update-msg-ok;
-    in property <bool>   update-checking;
-    in property <bool>   update-downloading;
-    in property <float>  update-progress;
+    in property <bool> update-msg-ok;
+    in property <bool> update-checking;
+    in property <bool> update-downloading;
+    in property <float> update-progress;
 
     in property <bool> connecting;
     in property <bool> discovering;
@@ -2489,8 +2541,11 @@ export component AppWindow inherits Window {
                     alignment: start;
                     VerticalLayout {
                         alignment: center;
-                        Dot { online: root.online; }
+                        Dot {
+                            online: root.online;
+                        }
                     }
+
                     Text {
                         text: root.online ? Tr.status_online : Tr.status_offline;
                         color: root.online ? Palette.success : Palette.text-dim;
@@ -2504,7 +2559,9 @@ export component AppWindow inherits Window {
                 theme-toggle := TouchArea {
                     height: 32px;
                     mouse-cursor: pointer;
-                    clicked => { root.do-toggle-theme(); }
+                    clicked => {
+                        root.do-toggle-theme();
+                    }
 
                     Rectangle {
                         border-radius: 8px;
@@ -2521,6 +2578,7 @@ export component AppWindow inherits Window {
                                 vertical-alignment: center;
                                 width: 18px;
                             }
+
                             Text {
                                 text: ThemeState.dark ? "浅色模式" : "深色模式";
                                 font-size: 11px;
@@ -2552,6 +2610,7 @@ export component AppWindow inherits Window {
                 height: 380px;
                 background: @radial-gradient(circle, Palette.orb-a, #00000000);
             }
+
             Rectangle {
                 x: content-area.width - 340px;
                 y: 10px;
@@ -2559,6 +2618,7 @@ export component AppWindow inherits Window {
                 height: 340px;
                 background: @radial-gradient(circle, Palette.orb-b, #00000000);
             }
+
             Rectangle {
                 x: content-area.width - 200px;
                 y: content-area.height - 240px;
@@ -2569,7 +2629,8 @@ export component AppWindow inherits Window {
 
             ScrollView {
                 visible: page == 0;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
@@ -2600,7 +2661,8 @@ export component AppWindow inherits Window {
 
             ScrollView {
                 visible: page == 1;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
@@ -2616,7 +2678,8 @@ export component AppWindow inherits Window {
 
             ScrollView {
                 visible: page == 2;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
@@ -2636,7 +2699,8 @@ export component AppWindow inherits Window {
 
             ScrollView {
                 visible: page == 3;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
@@ -2681,11 +2745,13 @@ export component AppWindow inherits Window {
 
             ScrollView {
                 visible: page == 4;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
-                viewport-height: page4.preferred-height;
+                viewport-height: parent.height;
+                //page4.preferred-height;
                 page4 := DevicesPage {
                     width: parent.viewport-width;
                     items <=> root.devices;
@@ -2702,7 +2768,8 @@ export component AppWindow inherits Window {
 
             ScrollView {
                 visible: page == 5;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
@@ -2738,22 +2805,27 @@ export component AppWindow inherits Window {
                         root.save-proxy-settings();
                     }
                     update-current-ver <=> root.update-current-ver;
-                    update-latest-ver  <=> root.update-latest-ver;
-                    update-available   <=> root.update-available;
-                    update-changelog   <=> root.update-changelog;
-                    update-msg         <=> root.update-msg;
-                    update-msg-ok      <=> root.update-msg-ok;
-                    update-checking    <=> root.update-checking;
+                    update-latest-ver <=> root.update-latest-ver;
+                    update-available <=> root.update-available;
+                    update-changelog <=> root.update-changelog;
+                    update-msg <=> root.update-msg;
+                    update-msg-ok <=> root.update-msg-ok;
+                    update-checking <=> root.update-checking;
                     update-downloading <=> root.update-downloading;
-                    update-progress    <=> root.update-progress;
-                    do-check-update => { root.do-check-update(); }
-                    do-apply-update => { root.do-apply-update(); }
+                    update-progress <=> root.update-progress;
+                    do-check-update => {
+                        root.do-check-update();
+                    }
+                    do-apply-update => {
+                        root.do-apply-update();
+                    }
                 }
             }
 
             ScrollView {
                 visible: page == 6;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
@@ -2771,16 +2843,25 @@ export component AppWindow inherits Window {
                     new-filter <=> root.tunnel-new-filter;
                     status-msg <=> root.tunnel-status-msg;
                     status-ok <=> root.tunnel-status-ok;
-                    toggle-socks5 => { root.toggle-socks5(); }
-                    refresh-rules => { root.do-refresh-rules(); }
-                    add-rule => { root.do-add-rule(); }
-                    remove-rule(id) => { root.do-remove-rule(id); }
+                    toggle-socks5 => {
+                        root.toggle-socks5();
+                    }
+                    refresh-rules => {
+                        root.do-refresh-rules();
+                    }
+                    add-rule => {
+                        root.do-add-rule();
+                    }
+                    remove-rule(id) => {
+                        root.do-remove-rule(id);
+                    }
                 }
             }
 
             ScrollView {
                 visible: page == 7;
-                x: 0; y: 0;
+                x: 0;
+                y: 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-width: self.width;
@@ -2795,10 +2876,18 @@ export component AppWindow inherits Window {
                     qr-visible <=> root.pay-qr-visible;
                     selected-plan-name <=> root.pay-selected-plan-name;
                     selected-plan-price <=> root.pay-selected-plan-price;
-                    refresh-plans => { root.do-refresh-plans(); }
-                    pay-alipay(id) => { root.do-pay-alipay(id); }
-                    pay-stripe(id) => { root.do-pay-stripe(id); }
-                    close-qr => { root.do-close-qr(); }
+                    refresh-plans => {
+                        root.do-refresh-plans();
+                    }
+                    pay-alipay(id) => {
+                        root.do-pay-alipay(id);
+                    }
+                    pay-stripe(id) => {
+                        root.do-pay-stripe(id);
+                    }
+                    close-qr => {
+                        root.do-close-qr();
+                    }
                 }
             }
         }

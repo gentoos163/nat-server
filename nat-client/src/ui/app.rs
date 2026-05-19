@@ -1549,11 +1549,9 @@ fn start_payment_poll(win: slint::Weak<AppWindow>, ipc_port: u16, order_no: Stri
 
 fn nat_type_name(t: i64) -> &'static str {
     match t {
-        1 => "对称 NAT（仅中继）",
-        2 => "对称 UDP 防火墙",
-        3 => "完全锥形（最优）",
-        4 => "受限锥形",
-        5 => "端口受限锥形",
+        // 对应 rendezvous_proto::NatType 枚举值
+        1 => "锥形 NAT（可直连）",   // ASYMMETRIC: 两次连接外网端口相同
+        2 => "对称 NAT（仅中继）",   // SYMMETRIC: 两次连接外网端口不同
         _ => "未知",
     }
 }

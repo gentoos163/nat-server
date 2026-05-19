@@ -20,6 +20,7 @@ use core_common::{
     rendezvous_proto::{
         register_pk_response, rendezvous_message, FetchLocalAddr, LocalAddr, PunchHole,
         PunchHoleSent, RegisterPeer, RegisterPk, RelayResponse, RendezvousMessage, RequestRelay,
+        TestNatRequest,
     },
     sleep,
     socket_client::{self, connect_tcp},
@@ -54,6 +55,8 @@ pub static ONLINE: AtomicBool = AtomicBool::new(false);
 /// 信号中介重启
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 static MANUAL_RESTARTED: AtomicBool = AtomicBool::new(false);
+/// NAT 类型是否已检测完毕（避免重复检测）
+static NAT_DETECTED: AtomicBool = AtomicBool::new(false);
 
 // ──────────────────────────────────────────────────────────────────────────────
 // RendezvousMediator 结构体
@@ -223,6 +226,13 @@ impl RendezvousMediator {
                 } else {
                     // 已注册成功
                     ONLINE.store(true, Ordering::SeqCst);
+                    if !NAT_DETECTED.load(Ordering::SeqCst) {
+                        let host = self.host.clone();
+                        let wire = self.wire;
+                        tokio::spawn(async move {
+                            detect_nat_type(host, wire).await;
+                        });
+                    }
                 }
             }
 
@@ -234,6 +244,13 @@ impl RendezvousMediator {
                         ClientConfig::set_host_key_confirmed(&self.host_prefix, true);
                         ONLINE.store(true, Ordering::SeqCst);
                         log::info!("[mediator] {} 公钥确认成功，已上线", self.host);
+                        if !NAT_DETECTED.load(Ordering::SeqCst) {
+                            let host = self.host.clone();
+                            let wire = self.wire;
+                            tokio::spawn(async move {
+                                detect_nat_type(host, wire).await;
+                            });
+                        }
                     }
                     Ok(register_pk_response::Result::UUID_MISMATCH) => {
                         log::warn!("[mediator] {} UUID 不匹配，重新生成 ID", self.host);
@@ -688,6 +705,77 @@ impl RendezvousMediator {
             return provided;
         }
         socket_client::increase_port(&self.host, 1)
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// NAT 类型检测
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// 通过两次独立 TCP 连接向服务器发送 TestNatRequest，比较服务器观察到的外网端口：
+/// - 端口相同 → Asymmetric（锥形）NAT，类型值 1
+/// - 端口不同 → Symmetric NAT，类型值 2
+async fn detect_nat_type(host: String, wire: Protocol) {
+    match detect_nat_type_inner(&host, wire).await {
+        Ok(nat_type) => {
+            ClientConfig::set_nat_type(nat_type);
+            NAT_DETECTED.store(true, Ordering::SeqCst);
+            log::info!(
+                "[nat] 检测完成: {} ({})",
+                nat_type,
+                match nat_type {
+                    1 => "锥形 NAT (Asymmetric)",
+                    2 => "对称 NAT (Symmetric)",
+                    _ => "未知",
+                }
+            );
+        }
+        Err(e) => {
+            log::warn!("[nat] 检测失败: {}", e);
+        }
+    }
+}
+
+async fn detect_nat_type_inner(host: &str, wire: Protocol) -> ResultType<i32> {
+    let port1 = query_nat_port(host, wire).await?;
+    let port2 = query_nat_port(host, wire).await?;
+
+    log::debug!("[nat] 第一次外网端口: {}，第二次外网端口: {}", port1, port2);
+
+    if port1 > 0 && port2 > 0 {
+        Ok(if port1 == port2 { 1 } else { 2 })
+    } else {
+        Ok(0)
+    }
+}
+
+/// 建立一条新 TCP 连接，发送 TestNatRequest，返回服务器观察到的客户端外网端口
+async fn query_nat_port(host: &str, wire: Protocol) -> ResultType<i32> {
+    let mut conn = connect_tcp(host.to_owned(), CONNECT_TIMEOUT).await?;
+
+    let mut msg = RendezvousMessage::new();
+    msg.set_test_nat_request(TestNatRequest {
+        serial: 0,
+        ..Default::default()
+    });
+    send_rendezvous(&mut conn, &msg, wire).await?;
+
+    let bytes = tokio::time::timeout(
+        std::time::Duration::from_millis(CONNECT_TIMEOUT),
+        conn.next(),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("TestNatRequest 响应超时"))?
+    .ok_or_else(|| anyhow::anyhow!("连接被重置"))??;
+
+    let resp = rendezvous_codec::parse(&bytes)
+        .ok_or_else(|| anyhow::anyhow!("无法解析 TestNatResponse"))?;
+
+    match resp.union {
+        Some(rendezvous_message::Union::TestNatResponse(tnr)) => Ok(tnr.port),
+        other => {
+            bail!("期望 TestNatResponse，收到 {:?}", other.map(|u| format!("{:?}", u)))
+        }
     }
 }
 

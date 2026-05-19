@@ -6,7 +6,8 @@
       "PowerShell(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\nat-client\\\\icons\")",
       "PowerShell(Copy-Item \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\logo1.ico\" \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\nat-client\\\\icons\\\\logo.ico\" -Force)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(cargo build *)"
     ]
   }
 }
