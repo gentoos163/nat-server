@@ -23,6 +23,7 @@ mod auth;
 mod config;
 mod i18n;
 mod ipc;
+mod kcp_tunnel;
 mod lan;
 mod port_forward;
 mod rendezvous_mediator;

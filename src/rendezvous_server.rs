@@ -598,6 +598,19 @@ impl RendezvousServer {
                         );
                     }
                 }
+                // 处理 UDP NAT 测试请求（STUN-like UDP 公网端口探测）
+                Some(rendezvous_message::Union::TestNatRequest(_)) => {
+                    let mut msg_out = RendezvousMessage::new();
+                    msg_out.set_test_nat_response(TestNatResponse {
+                        port: addr.port() as _,
+                        ..Default::default()
+                    });
+                    if let Some(bytes) = crate::codec::serialize(&msg_out, proto) {
+                        socket.send_bytes(bytes, addr).await?;
+                    } else {
+                        socket.send(&msg_out, addr).await?;
+                    }
+                }
                 // 处理软件更新通知
                 Some(rendezvous_message::Union::SoftwareUpdate(su)) => {
                     if !self.inner.version.is_empty() && su.url != self.inner.version {
@@ -859,6 +872,7 @@ impl RendezvousServer {
             socket_addr: AddrMangle::encode(addr).into(),
             pk: self.get_pk(&phs.version, phs.id).await,
             relay_server: phs.relay_server.clone(),
+            upnp_port: phs.upnp_port,
             ..Default::default()
         };
         if let Ok(t) = phs.nat_type.enum_value() {
@@ -1034,6 +1048,7 @@ impl RendezvousServer {
                     socket_addr,
                     nat_type: ph.nat_type,
                     relay_server,
+                    upnp_port: ph.upnp_port,
                     ..Default::default()
                 });
             }

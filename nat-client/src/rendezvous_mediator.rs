@@ -7,6 +7,7 @@
 //! 4. 支持 punch hole（TCP & UDP 打洞）和中继连接
 
 use crate::config::ClientConfig;
+use crate::kcp_tunnel;
 use crate::port_forward::PortForwardManager;
 use core_common::{
     allow_err,
@@ -28,10 +29,10 @@ use core_common::{
 };
 use std::{
     net::SocketAddr,
-    sync::atomic::{AtomicBool, Ordering},
-    time::Instant,
+    sync::{atomic::{AtomicBool, Ordering}, Arc},
+    time::{Duration, Instant},
 };
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, UdpSocket};
 
 /// 按配置的线路协议发送 `RendezvousMessage`（proto3 或 capnp）
 async fn send_rendezvous(
@@ -358,7 +359,8 @@ impl RendezvousMediator {
     ///
     /// 策略：
     /// 1. 若对端是对称 NAT 或强制中继 → 走中继
-    /// 2. 否则尝试 TCP 直连打洞；失败则回落到中继
+    /// 2. 否则优先尝试 UDP 打洞 + KCP（1.5 s 超时）
+    /// 3. KCP 失败则回落 TCP 打洞，TCP 失败再回落中继
     async fn handle_punch_hole(&self, ph: PunchHole) -> ResultType<()> {
         let peer_addr = AddrMangle::decode(&ph.socket_addr);
         log::info!(
@@ -382,7 +384,66 @@ impl RendezvousMediator {
                 .await;
         }
 
-        // 尝试 TCP 打洞
+        // ── 尝试 UDP 打洞 + KCP ───────────────────────────────────────────
+        let peer_udp_port = ph.upnp_port as u16;
+        if peer_udp_port != 0 {
+            let peer_ip = peer_addr.ip();
+            let peer_udp_addr = SocketAddr::new(peer_ip, peer_udp_port);
+            let hbbs_addr: SocketAddr = match socket_client::check_port(&self.host, RENDEZVOUS_PORT)
+                .parse()
+            {
+                Ok(a) => a,
+                Err(_) => {
+                    log::warn!("[mediator] 无法解析 hbbs 地址，跳过 UDP 打洞");
+                    SocketAddr::new("0.0.0.0".parse().unwrap(), 0)
+                }
+            };
+
+            let kcp_result: Option<(crate::kcp_tunnel::KcpSender, crate::kcp_tunnel::KcpReceiver)> =
+                if hbbs_addr.port() != 0 {
+                    match UdpSocket::bind("0.0.0.0:0").await {
+                        Ok(sock) => {
+                            let sock = Arc::new(sock);
+                            // STUN：获取本端 UDP 公网端口（仅记录日志，对端已有我们的 TCP 公网 IP）
+                            let _my_udp_port =
+                                kcp_tunnel::query_udp_public_port(&sock, hbbs_addr).await;
+                            // 发送 UDP 探针
+                            kcp_tunnel::send_udp_probes(&sock, peer_udp_addr).await;
+                            // 等待对端握手
+                            tokio::time::timeout(
+                                Duration::from_millis(1500),
+                                kcp_tunnel::kcp_accept(sock, peer_udp_addr),
+                            )
+                            .await
+                            .ok()
+                            .flatten()
+                        }
+                        Err(e) => {
+                            log::warn!("[mediator] UDP socket 创建失败: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+            if let Some((kcp_tx, kcp_rx)) = kcp_result {
+                log::info!("[mediator] UDP+KCP 打洞成功 peer={}", peer_udp_addr);
+                let (target_host, target_port) =
+                    ClientConfig::find_target_for_peer(&peer_addr.ip().to_string())
+                        .unwrap_or_else(|| ("127.0.0.1".to_owned(), 0));
+                if target_port != 0 {
+                    PortForwardManager::register_inbound_kcp(
+                        kcp_tx, kcp_rx, uuid, target_host, target_port,
+                    )
+                    .await;
+                    return Ok(());
+                }
+            }
+            log::info!("[mediator] UDP+KCP 打洞失败，回落 TCP 打洞");
+        }
+
+        // ── 尝试 TCP 打洞 ────────────────────────────────────────────────────
         match self
             .punch_tcp_hole(
                 peer_addr,
@@ -416,7 +477,7 @@ impl RendezvousMediator {
     /// 原理：
     /// 1. 先连接 rendezvous server（复用本地端口）
     /// 2. 向本地端口发一个 SYN（打开 NAT 映射）
-    /// 3. 向 hbbs 发送 PunchHoleSent，告知对端我的地址
+    /// 3. 向 hbbs 发送 PunchHoleSent（携带 UDP 公网端口），告知对端我的地址
     /// 4. 对端 SYN 到达后建立真正的 TCP 连接
     async fn punch_tcp_hole(
         &self,
@@ -434,6 +495,9 @@ impl RendezvousMediator {
         let la = local_addr;
         allow_err!(socket_client::connect_tcp_local(peer_addr, Some(la), 30).await);
 
+        // 同时做 UDP STUN，将 UDP 公网端口附在 PunchHoleSent 中
+        let udp_port = self.probe_udp_public_port().await.unwrap_or(0);
+
         // 通过服务器连接通知对端
         let mut msg_out = RendezvousMessage::new();
         msg_out.set_punch_hole_sent(PunchHoleSent {
@@ -441,6 +505,7 @@ impl RendezvousMediator {
             id: ClientConfig::get_id(),
             relay_server,
             version: env!("CARGO_PKG_VERSION").to_owned(),
+            upnp_port: udp_port as i32,
             ..Default::default()
         });
         let out_bytes = if let Some(b) = rendezvous_codec::serialize(&msg_out, self.wire) {
@@ -706,6 +771,16 @@ impl RendezvousMediator {
         }
         socket_client::increase_port(&self.host, 1)
     }
+
+    /// 绑定 UDP socket 并通过 STUN 探测本机 UDP 公网端口。
+    /// 失败时返回 None（不阻塞主流程）。
+    async fn probe_udp_public_port(&self) -> Option<u16> {
+        let hbbs_addr: SocketAddr = socket_client::check_port(&self.host, RENDEZVOUS_PORT)
+            .parse()
+            .ok()?;
+        let sock = UdpSocket::bind("0.0.0.0:0").await.ok()?;
+        kcp_tunnel::query_udp_public_port(&sock, hbbs_addr).await
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -799,15 +874,32 @@ pub async fn connect_to_peer(peer_id: String, local_port: u16) -> ResultType<u16
 
     log::info!("[mediator] 发起连接到 peer={}", peer_id);
 
+    // STUN：在连接到 hbbs 之前探测本机 UDP 公网端口
+    let hbbs_udp: SocketAddr = host.parse().unwrap_or_else(|_| {
+        socket_client::check_port(&host, RENDEZVOUS_PORT)
+            .parse()
+            .unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap())
+    });
+    let udp_sock = UdpSocket::bind("0.0.0.0:0").await.ok();
+    let my_udp_port = if let Some(ref sock) = udp_sock {
+        kcp_tunnel::query_udp_public_port(sock, hbbs_udp)
+            .await
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    log::debug!("[mediator] 本机 UDP 公网端口: {}", my_udp_port);
+
     let mut conn = connect_tcp(host.clone(), CONNECT_TIMEOUT).await?;
 
-    // 发送打洞请求
+    // 发送打洞请求（携带 UDP 公网端口）
     let mut msg = RendezvousMessage::new();
     msg.set_punch_hole_request(PunchHoleRequest {
         id: peer_id.clone(),
-        token: ClientConfig::get_id(), // 用自己的 ID 作为临时令牌
+        token: ClientConfig::get_id(),
         nat_type: core_common::rendezvous_proto::NatType::UNKNOWN_NAT.into(),
         licence_key: String::new(),
+        upnp_port: my_udp_port as i32,
         ..Default::default()
     });
     send_rendezvous(&mut conn, &msg, wire).await?;
@@ -827,9 +919,39 @@ pub async fn connect_to_peer(peer_id: String, local_port: u16) -> ResultType<u16
     // 根据服务器响应决定连接方式
     let actual_port = match msg.union {
         Some(rendezvous_message::Union::PunchHoleResponse(phr)) => {
-            // 直连
             let peer_addr = AddrMangle::decode(&phr.socket_addr);
-            log::info!("[mediator] 直连模式: {:?}", peer_addr);
+            let peer_udp_port = phr.upnp_port as u16;
+
+            // 优先尝试 UDP+KCP
+            if peer_udp_port != 0 && my_udp_port != 0 {
+                if let Some(ref sock) = udp_sock {
+                    let peer_udp_addr = SocketAddr::new(peer_addr.ip(), peer_udp_port);
+                    // 重新绑定独立 socket（原 sock 用于 STUN，不复用）
+                    if let Ok(kcp_sock) = UdpSocket::bind("0.0.0.0:0").await {
+                        let kcp_sock = Arc::new(kcp_sock);
+                        kcp_tunnel::send_udp_probes(&kcp_sock, peer_udp_addr).await;
+                        let result = tokio::time::timeout(
+                            Duration::from_millis(1500),
+                            kcp_tunnel::kcp_connect(Arc::clone(&kcp_sock), peer_udp_addr),
+                        )
+                        .await
+                        .ok()
+                        .flatten();
+
+                        if let Some((kcp_tx, kcp_rx)) = result {
+                            log::info!("[mediator] UDP+KCP 连接成功 peer={}", peer_udp_addr);
+                            return PortForwardManager::create_outbound_kcp(
+                                local_port, kcp_tx, kcp_rx,
+                            )
+                            .await;
+                        }
+                        log::info!("[mediator] UDP+KCP 连接失败，回落 TCP 直连");
+                    }
+                }
+            }
+
+            // TCP 直连回落
+            log::info!("[mediator] TCP 直连模式: {:?}", peer_addr);
             PortForwardManager::create_outbound_direct(local_port, peer_addr).await?
         }
         Some(rendezvous_message::Union::RelayResponse(rr)) => {

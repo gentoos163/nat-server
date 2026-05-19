@@ -473,6 +473,97 @@ impl PortForwardManager {
         Ok(actual_port)
     }
 
+    // ── KCP 入站（被动侧：对端打洞后通过 KCP/UDP 连入） ─────────────────────
+
+    /// 通过 KCP 通道接收对端连接，转发到本地服务
+    pub async fn register_inbound_kcp(
+        kcp_tx: crate::kcp_tunnel::KcpSender,
+        mut kcp_rx: crate::kcp_tunnel::KcpReceiver,
+        uuid: String,
+        target_host: String,
+        target_port: u16,
+    ) {
+        tokio::spawn(async move {
+            let target = format!("{}:{}", target_host, target_port);
+            let stream = match TcpStream::connect(&target).await {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("[pf/kcp] 连接本地服务 {} 失败: {}", target, e);
+                    return;
+                }
+            };
+            log::info!("[pf/kcp] KCP 入站隧道已建立 → {} uuid={}", target, uuid);
+            let (mut tr, mut tw) = stream.into_split();
+            let kcp_tx2 = kcp_tx.clone();
+
+            // KCP → 本地服务
+            let kcp_to_local = tokio::spawn(async move {
+                while let Some(data) = kcp_rx.recv().await {
+                    if tw.write_all(&data).await.is_err() { break; }
+                }
+            });
+            // 本地服务 → KCP
+            let local_to_kcp = tokio::spawn(async move {
+                let mut buf = vec![0u8; 32 * 1024];
+                loop {
+                    let n = match tr.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => n,
+                    };
+                    if kcp_tx2.send(bytes::Bytes::copy_from_slice(&buf[..n])).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            tokio::select! { _ = kcp_to_local => {} _ = local_to_kcp => {} }
+        });
+    }
+
+    // ── KCP 出站（主动侧：本机通过 KCP/UDP 连接对端） ────────────────────────
+
+    /// 创建出站 KCP 隧道：在本地端口监听，应用连入后通过 KCP 通道转发
+    pub async fn create_outbound_kcp(
+        local_port: u16,
+        kcp_tx: crate::kcp_tunnel::KcpSender,
+        mut kcp_rx: crate::kcp_tunnel::KcpReceiver,
+    ) -> ResultType<u16> {
+        let listener = TcpListener::bind(format!("127.0.0.1:{}", local_port)).await?;
+        let actual_port = listener.local_addr()?.port();
+        log::info!("[pf/kcp] KCP 出站隧道监听 127.0.0.1:{}", actual_port);
+
+        tokio::spawn(async move {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let (mut lr, mut lw) = stream.into_split();
+                    let kcp_tx2 = kcp_tx.clone();
+
+                    // 本地应用 → KCP
+                    let local_to_kcp = tokio::spawn(async move {
+                        let mut buf = vec![0u8; 32 * 1024];
+                        loop {
+                            let n = match lr.read(&mut buf).await {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => n,
+                            };
+                            if kcp_tx2.send(bytes::Bytes::copy_from_slice(&buf[..n])).await.is_err() {
+                                break;
+                            }
+                        }
+                    });
+                    // KCP → 本地应用
+                    let kcp_to_local = tokio::spawn(async move {
+                        while let Some(data) = kcp_rx.recv().await {
+                            if lw.write_all(&data).await.is_err() { break; }
+                        }
+                    });
+                    tokio::select! { _ = local_to_kcp => {} _ = kcp_to_local => {} }
+                }
+                Err(e) => log::error!("[pf/kcp] accept 错误: {}", e),
+            }
+        });
+        Ok(actual_port)
+    }
+
     // ── 通用双向代理 ─────────────────────────────────────────────────────────
 
     /// 在两个 TCP 流之间做双向代理，直到任一端关闭或收到 close 信号
