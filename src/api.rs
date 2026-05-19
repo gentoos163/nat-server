@@ -226,6 +226,7 @@ pub struct DeviceInfo {
     pub device_name: Option<String>,
     pub created_at: String,
     pub is_active: bool,
+    pub online: bool,
 }
 
 impl From<UserDevice> for DeviceInfo {
@@ -236,6 +237,7 @@ impl From<UserDevice> for DeviceInfo {
             device_name: device.device_name,
             created_at: device.created_at.to_rfc3339(),
             is_active: device.is_active,
+            online: false,
         }
     }
 }
@@ -452,7 +454,21 @@ pub async fn get_user_devices(
     }
     match state.db.get_user_devices_simple(user_id).await {
         Ok(devices) => {
-            let device_infos: Vec<DeviceInfo> = devices.into_iter().map(|d| d.into()).collect();
+            let online_peers = crate::peer::ONLINE_PEERS.read().unwrap();
+            let device_infos: Vec<DeviceInfo> = devices
+                .into_iter()
+                .map(|d| {
+                    let online = online_peers.contains_key(&d.device_id);
+                    DeviceInfo {
+                        id: d.id,
+                        device_id: d.device_id,
+                        device_name: d.device_name,
+                        created_at: d.created_at.to_rfc3339(),
+                        is_active: d.is_active,
+                        online,
+                    }
+                })
+                .collect();
             Ok(Json(ApiResponse::success(device_infos)))
         }
         Err(e) => Ok(Json(ApiResponse::error(format!("获取设备列表失败: {}", e)))),

@@ -82,6 +82,8 @@ pub struct DeviceInfo {
     pub device_name: Option<String>,
     pub is_active: bool,
     pub created_at: String,
+    #[serde(default)]
+    pub online: bool,
 }
 
 /// JWT Claims（用于解析过期时间，不做验证）

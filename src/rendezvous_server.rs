@@ -746,6 +746,32 @@ impl RendezvousServer {
                     Self::send_to_sink(sink, msg_out, proto).await;
                     return true;
                 }
+                Some(rendezvous_message::Union::RegisterPeer(rp)) => {
+                    if rp.id.is_empty() {
+                        return false;
+                    }
+                    let mut request_pk = true;
+                    if let Some(peer) = self.pm.get_in_memory(&rp.id).await {
+                        let mut peer = peer.write().await;
+                        let ip = addr.ip();
+                        let ip_change = peer.socket_addr.port() != 0
+                            && ip != peer.socket_addr.ip()
+                            && !ip.is_loopback();
+                        request_pk = peer.pk.is_empty() || ip_change;
+                        if !request_pk {
+                            peer.socket_addr = addr;
+                            peer.last_reg_time = Instant::now();
+                            peer.protocol = proto;
+                        }
+                    }
+                    let mut msg_out = RendezvousMessage::new();
+                    msg_out.set_register_peer_response(RegisterPeerResponse {
+                        request_pk,
+                        ..Default::default()
+                    });
+                    Self::send_to_sink(sink, msg_out, proto).await;
+                    return true;
+                }
                 _ => {}
             }
         }

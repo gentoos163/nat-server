@@ -63,6 +63,7 @@ struct RawDevice {
     device_id: String,
     device_name: String,
     is_active: bool,
+    online: bool,
     created_at: String,
 }
 
@@ -334,6 +335,7 @@ fn collect_poll_data(ipc_port: u16, page: i32) -> PollSnapshot {
                             device_id:   d["device_id"].as_str().unwrap_or("").to_owned(),
                             device_name: d["device_name"].as_str().unwrap_or("").to_owned(),
                             is_active:   d["is_active"].as_bool().unwrap_or(false),
+                            online:      d["online"].as_bool().unwrap_or(false),
                             created_at:  d["created_at"].as_str().unwrap_or("").to_owned(),
                         })
                         .collect()
@@ -446,6 +448,7 @@ fn apply_poll_snapshot(w: &AppWindow, snap: PollSnapshot) {
                     device_id:   d.device_id.into(),
                     device_name: d.device_name.into(),
                     is_active:   d.is_active,
+                    is_online:   d.online,
                     created_at:  d.created_at.into(),
                 })
                 .collect::<Vec<_>>(),
@@ -873,6 +876,7 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
                                 device_id:   d["device_id"].as_str().unwrap_or("").into(),
                                 device_name: d["device_name"].as_str().unwrap_or("").into(),
                                 is_active:   d["is_active"].as_bool().unwrap_or(false),
+                                is_online:   d["online"].as_bool().unwrap_or(false),
                                 created_at:  d["created_at"].as_str().unwrap_or("").into(),
                             }).collect();
                             w.set_devices(ModelRc::new(VecModel::from(items)));
