@@ -14,7 +14,7 @@ websocket_port = 21119
 [key]
 # 服务器密钥，只允许具有相同密钥的客户端连接
 # 生产环境请修改为强密钥
-secret = ""
+secret = 
 
 # 网络配置
 [network]

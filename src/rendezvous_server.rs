@@ -229,7 +229,7 @@ impl RendezvousServer {
             }
         );
         // 启动测试任务（如果需要）
-        if test_addr.to_lowercase() != "no" {
+        if test_addr.to_lowercase() == "yes" {
             let test_addr = if test_addr.is_empty() {
                 listener.local_addr()?
             } else {

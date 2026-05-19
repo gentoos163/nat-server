@@ -230,6 +230,7 @@
 {% block content %}
 <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('smtp', this)">{{ t.settings_smtp }}</button>
+    <button class="tab-btn" onclick="switchTab('serverparams', this)">{{ t.settings_server_params }}</button>
     <button class="tab-btn" onclick="switchTab('ip', this)">{{ t.settings_blacklist }}</button>
     <button class="tab-btn" onclick="switchTab('sysinfo', this)">{{ t.settings_sysinfo }}</button>
     <button class="tab-btn" onclick="switchTab('serverconf', this)">{{ t.settings_server_config }}</button>
@@ -284,6 +285,89 @@
         <div class="form-actions">
             <button class="btn btn-primary" onclick="saveSmtp()">{{ t.btn_save }}</button>
             <button class="btn btn-secondary" onclick="testSmtp()">测试发送</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Tab: 服务器参数 ─────────────────────────────────────────────────────── -->
+<div id="tab-serverparams" class="tab-panel">
+    <!-- hbbs -->
+    <div class="form-section">
+        <h3>{{ t.settings_hbbs_section }}</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>{{ t.settings_hbbs_port }}</label>
+                <input type="number" id="hbbs_port" placeholder="21115" />
+            </div>
+            <div class="form-group">
+                <label>{{ t.settings_hbbs_serial }}</label>
+                <input type="number" id="hbbs_serial" placeholder="0" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>{{ t.settings_hbbs_key }}</label>
+                <input type="text" id="hbbs_key" placeholder="（留空表示不限制）" />
+            </div>
+            <div class="form-group">
+                <label>{{ t.settings_hbbs_lan_mask }}</label>
+                <input type="text" id="hbbs_lan_mask" placeholder="192.168.0.0/16" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>{{ t.settings_hbbs_max_conn }}</label>
+                <input type="number" id="hbbs_max_connections" placeholder="1000" />
+            </div>
+            <div class="form-group">
+                <label>{{ t.settings_hbbs_rate_limit }}</label>
+                <input type="number" id="hbbs_rate_limit" placeholder="100" />
+            </div>
+        </div>
+    </div>
+    <!-- hbbr -->
+    <div class="form-section">
+        <h3>{{ t.settings_hbbr_section }}</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>{{ t.settings_hbbr_port }}</label>
+                <input type="number" id="hbbr_port" placeholder="21117" />
+            </div>
+            <div class="form-group">
+                <label>{{ t.settings_hbbr_ws_port }}</label>
+                <input type="number" id="hbbr_websocket_port" placeholder="21119" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>{{ t.settings_hbbr_key }}</label>
+                <input type="text" id="hbbr_key" placeholder="（留空表示不限制）" />
+            </div>
+            <div class="form-group">
+                <label>{{ t.settings_hbbr_relay_host }}</label>
+                <input type="text" id="hbbr_relay_host" placeholder="relay.example.com" />
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>{{ t.settings_hbbr_max_conn }}</label>
+                <input type="number" id="hbbr_max_connections" placeholder="1000" />
+            </div>
+            <div class="form-group"></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>{{ t.settings_hbbr_total_bw }}</label>
+                <input type="number" id="hbbr_total_bandwidth" placeholder="0" />
+            </div>
+            <div class="form-group">
+                <label>{{ t.settings_hbbr_single_bw }}</label>
+                <input type="number" id="hbbr_single_bandwidth" placeholder="0" />
+            </div>
+        </div>
+        <div class="notice" style="margin-bottom:16px">修改后需重启服务才能生效。</div>
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveServerParams()">{{ t.btn_save }}</button>
         </div>
     </div>
 </div>
@@ -398,6 +482,7 @@
             el.style.display = "";
         });
         await loadSmtpSettings();
+        await loadServerParams();
         await loadBlacklist();
         await loadBlocklist();
         await loadSysinfo();
@@ -460,6 +545,45 @@
 
     async function testSmtp() {
         showError("测试邮件功能尚未实现（请先完成 SMTP 集成）");
+    }
+
+    // ── 服务器参数 (hbbs/hbbr) ────────────────────────────────────────────────
+    const SERVER_PARAM_KEYS = [
+        "hbbs_port", "hbbs_serial", "hbbs_key", "hbbs_lan_mask",
+        "hbbr_relay_host",
+        "hbbr_port", "hbbr_websocket_port", "hbbr_key",
+        "hbbr_max_connections", "hbbr_total_bandwidth", "hbbr_single_bandwidth",
+    ];
+
+    async function loadServerParams() {
+        try {
+            const res = await fetch("/api/admin/server-params", { headers: authHeaders() });
+            const data = await res.json();
+            if (!data.success) return;
+            const s = data.data || {};
+            SERVER_PARAM_KEYS.forEach(function (k) {
+                var el = document.getElementById(k);
+                if (el) el.value = s[k] !== undefined ? s[k] : "";
+            });
+        } catch (e) { /* silently fail */ }
+    }
+
+    async function saveServerParams() {
+        var params = {};
+        SERVER_PARAM_KEYS.forEach(function (k) {
+            var el = document.getElementById(k);
+            if (el) params[k] = el.value.trim();
+        });
+        try {
+            const res = await fetch("/api/admin/server-params", {
+                method: "PUT",
+                headers: authHeaders(),
+                body: JSON.stringify({ params }),
+            });
+            const data = await res.json();
+            if (data.success !== false) showSuccess("已写入配置文件，重启服务后生效");
+            else showError(data.message || "保存失败");
+        } catch (e) { showError("请求失败: " + e.message); }
     }
 
     // ── 黑名单 ────────────────────────────────────────────────────────────────

@@ -102,14 +102,13 @@ pub fn init_args(args: &str, name: &str, about: &str) {
         }
     }
     
-    // 然后加载指定的配置文件
-    if let Some(config) = matches.value_of("config") {
-        if let Ok(v) = Ini::load_from_file(config) {
-            if let Some(section) = v.section(None::<String>) {
-                section
-                    .iter()
-                    .for_each(|(k, v)| std::env::set_var(arg_name(k), v));
-            }
+    // 然后加载配置文件：优先使用 -c 指定的文件，否则默认尝试 config.toml
+    let config_file = matches.value_of("config").unwrap_or("config.toml");
+    if let Ok(v) = Ini::load_from_file(config_file) {
+        if let Some(section) = v.section(None::<String>) {
+            section
+                .iter()
+                .for_each(|(k, v)| std::env::set_var(arg_name(k), v));
         }
     }
     

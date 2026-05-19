@@ -628,6 +628,12 @@ pub fn create_web_router(db: Database, jwt_secret: String) -> Router {
             "/api/admin/blocklist/:ip",
             delete(crate::settings_api::delete_blocklist),
         )
+        // 服务器参数 API（读写 config.toml / hbbr.toml）
+        .route(
+            "/api/admin/server-params",
+            get(crate::settings_api::get_server_params)
+                .put(crate::settings_api::update_server_params),
+        )
         // 系统信息 API
         .route("/api/admin/sysinfo", get(crate::settings_api::get_sysinfo))
         // 客户端更新（公开，无需认证）
