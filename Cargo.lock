@@ -4988,6 +4988,7 @@ dependencies = [
  "tray-icon",
  "uuid",
  "whoami",
+ "windows-sys 0.52.0",
  "winresource",
 ]
 

@@ -227,6 +227,9 @@ pub fn run_gui(ipc_port: u16) -> Result<(), slint::PlatformError> {
         });
     }
 
+    // X 按钮只隐藏，不退出事件循环
+    window.window().on_close_requested(|| slint::CloseRequestResponse::HideWindow);
+
     let result = window.run();
     crate::updater::stop_auto_update();
     result
@@ -1384,14 +1387,82 @@ fn bind_callbacks(w: &AppWindow, ipc_port: u16) {
 fn handle_tray_action(w: &AppWindow, action: TrayAction) {
     match action {
         TrayAction::ToggleWindow => {
-            let visible = w.window().is_visible();
-            if visible { w.window().hide().ok(); }
-            else { w.window().show().ok(); w.window().request_redraw(); }
+            // Windows：用 Win32 ShowWindow 绕过 Slint，
+            // 避免 Slint 在 hide() 后自动 quit_event_loop()
+            #[cfg(target_os = "windows")]
+            win32_toggle_window();
+            #[cfg(not(target_os = "windows"))]
+            {
+                let visible = w.window().is_visible();
+                if visible { w.window().hide().ok(); }
+                else { w.window().show().ok(); }
+            }
         }
-        TrayAction::GoHome    => { w.window().show().ok(); w.set_page(0); }
-        TrayAction::GoConnect => { w.window().show().ok(); w.set_page(0); }
-        TrayAction::GoAccount => { w.window().show().ok(); w.set_page(3); }
-        TrayAction::Quit      => slint::quit_event_loop().ok().unwrap_or(()),
+        TrayAction::GoHome => {
+            tray_show_window(w);
+            w.set_page(0);
+        }
+        TrayAction::GoConnect => {
+            tray_show_window(w);
+            w.set_page(0);
+        }
+        TrayAction::GoAccount => {
+            tray_show_window(w);
+            w.set_page(3);
+        }
+        TrayAction::Quit => slint::quit_event_loop().ok().unwrap_or(()),
+    }
+}
+
+/// 确保主窗口可见（跨平台）
+fn tray_show_window(w: &AppWindow) {
+    #[cfg(target_os = "windows")]
+    win32_show_window();
+    #[cfg(not(target_os = "windows"))]
+    { w.window().show().ok(); }
+    // 消除 Windows 上的 unused 警告
+    let _ = w;
+}
+
+// ── Win32 窗口控制（Windows 专用）─────────────────────────────────────────────
+
+/// 找到窗口标题为 "NAT Client" 的 HWND
+#[cfg(target_os = "windows")]
+fn win32_hwnd() -> isize {
+    use windows_sys::Win32::UI::WindowsAndMessaging::FindWindowW;
+    let title: Vec<u16> = "NAT Client\0".encode_utf16().collect();
+    unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) }
+}
+
+/// 切换主窗口可见状态（OS 层，不经 Slint）
+#[cfg(target_os = "windows")]
+fn win32_toggle_window() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        IsWindowVisible, SetForegroundWindow, ShowWindow, SW_HIDE, SW_SHOW,
+    };
+    unsafe {
+        let hwnd = win32_hwnd();
+        if hwnd == 0 { return; }
+        if IsWindowVisible(hwnd) != 0 {
+            ShowWindow(hwnd, SW_HIDE);
+        } else {
+            ShowWindow(hwnd, SW_SHOW);
+            SetForegroundWindow(hwnd);
+        }
+    }
+}
+
+/// 显示并前置主窗口
+#[cfg(target_os = "windows")]
+fn win32_show_window() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetForegroundWindow, ShowWindow, SW_SHOW,
+    };
+    unsafe {
+        let hwnd = win32_hwnd();
+        if hwnd == 0 { return; }
+        ShowWindow(hwnd, SW_SHOW);
+        SetForegroundWindow(hwnd);
     }
 }
 
