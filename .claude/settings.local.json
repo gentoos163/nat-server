@@ -7,7 +7,27 @@
       "PowerShell(Copy-Item \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\logo1.ico\" \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\\\\nat-client\\\\icons\\\\logo.ico\" -Force)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:github.com)",
-      "Bash(cargo build *)"
+      "Bash(cargo build *)",
+      "Bash(cat \"C:\\\\Users\\\\gento\\\\.cargo\\\\registry\\\\src\\\\index.crates.io-1949cf8c6b5b557f\\\\kcp-0.5.3\\\\src\\\\kcp.rs\" | head -200 2>&1 | grep -E \"pub fn|impl|struct Kcp|trait|fn nodelay|fn wndsize|fn set_mtu\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\gento\\\\Documents\\\\GitHub\\\\nat-server\" | Where-Object { $_.Name -ne 'target' } | Format-Table Mode, Name)",
+      "Bash(gh api *)",
+      "PowerShell(gh api repos/rustdesk/rustdesk-server/contents/src --jq '.[].name')",
+      "Bash(mkdir -p /tmp/rustdesk-refs)",
+      "Read(//tmp/**)",
+      "Bash(curl -sSL -o rendezvous_server.rs https://raw.githubusercontent.com/rustdesk/rustdesk-server/master/src/rendezvous_server.rs)",
+      "Bash(curl -sSL -o relay_server.rs       https://raw.githubusercontent.com/rustdesk/rustdesk-server/master/src/relay_server.rs)",
+      "Bash(curl -sSL -o common.rs             https://raw.githubusercontent.com/rustdesk/rustdesk-server/master/src/common.rs)",
+      "Bash(curl -sSLI https://raw.githubusercontent.com/rustdesk/rustdesk/master/src/rendezvous_mediator.rs)",
+      "Bash(curl -sSL -o client_rendezvous_mediator.rs https://raw.githubusercontent.com/rustdesk/rustdesk/master/src/rendezvous_mediator.rs)",
+      "Bash(curl -sSL -o client.rs                     https://raw.githubusercontent.com/rustdesk/rustdesk/master/src/client.rs)",
+      "Bash(curl -sSL -o messages.proto                https://raw.githubusercontent.com/rustdesk/rustdesk/master/libs/hbb_common/protos/message.proto)",
+      "Bash(curl -sSL -o rendezvous.proto              https://raw.githubusercontent.com/rustdesk/rustdesk/master/libs/hbb_common/protos/rendezvous.proto)",
+      "Bash(curl -sSL https://raw.githubusercontent.com/rustdesk/rustdesk-server/master/.gitmodules)",
+      "Bash(curl -sSL https://raw.githubusercontent.com/rustdesk/rustdesk/master/.gitmodules)",
+      "Bash(curl -sSL -o rendezvous.proto https://raw.githubusercontent.com/rustdesk/hbb_common/master/protos/rendezvous.proto)",
+      "Bash(curl -sSL -o message.proto    https://raw.githubusercontent.com/rustdesk/hbb_common/master/protos/message.proto)"
     ]
   }
 }
